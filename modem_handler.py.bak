@@ -1,0 +1,69 @@
+from gsmmodem.modem import GsmModem
+from gsmmodem.exceptions import TimeoutException
+import logging
+import time
+
+PORT = '/dev/ttyUSB2'  # Replace with your modem's port
+BAUDRATE = 115200      # Replace with your modem's baud rate
+SIM_PIN = None         # Replace with your SIM PIN if required
+
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+
+class ModemHandler(object):  # Explicitly inherit from `object` for Python 2 compatibility
+    def __init__(self, port, baudrate, pin=None):
+        self.port = port
+        self.baudrate = baudrate
+        self.pin = pin
+        self.modem = None
+
+    def connect(self):
+        """Connect to the GSM modem."""
+	time.sleep(2)
+        self.modem = GsmModem(self.port, self.baudrate, smsReceivedCallbackFunc=self.handle_sms)
+	try:
+	    logger.info("Attempting to connect to modem...")
+	    self.modem.connect(self.pin)
+	    logger.info("Modem connected successfully!")
+
+	    response = self.modem.write('AT')
+	    logger.info("Modem responded to AT command: {}".format(response))
+    	except TimeoutException:
+	    logger.error("Timeout while sending AT command. Retrying...")
+        self.modem.connect(self.pin)
+        logger.info("Modem connected successfully!")
+
+    def handle_sms(self, sms):
+        """Callback for handling incoming SMS."""
+        logger.info("SMS received from {0}: {1}".format(sms.number, sms.text))
+        self.on_sms_received(sms.number, sms.text)
+
+    def on_sms_received(self, number, message):
+        """Override this method to handle incoming SMS events."""
+        pass
+
+    def send_ussd(self, ussd_code):
+	"""Send a USSD command and return the response."""
+	try:
+	    logger.info("Sending USSD: {0}".format(ussd_code))
+            response = self.modem.sendUssd(ussd_code)
+            logger.info("USSD Response: {0}".format(response.message))
+            return response.message
+        except Exception as e:
+            logger.error("Failed to send USSD: {0}".format(e))
+            return None
+
+
+    def send_sms(self, number, message):
+        """Send an SMS."""
+        try:
+            self.modem.sendSms(number, message)
+            logger.info("SMS sent to {0}: {1}".format(number, message))
+        except Exception as e:
+            logger.error("Failed to send SMS: {0}".format(e))
+
+    def close(self):
+        """Close the modem connection."""
+        if self.modem:
+            self.modem.close()
+            logger.info("Modem connection closed.")

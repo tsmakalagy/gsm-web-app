@@ -1,0 +1,7 @@
+flask
+flask-socketio
+python-dotenv
+# Install gsmmodem manually:
+# git clone https://github.com/faucamp/python-gsmmodem.git
+# cd python-gsmmodem
+# pip install .

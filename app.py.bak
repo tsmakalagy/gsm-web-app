@@ -1,0 +1,55 @@
+from flask import Flask, render_template, request
+from flask_socketio import SocketIO, emit
+from modem_handler import ModemHandler
+import threading
+
+app = Flask(__name__)
+app.config['SECRET_KEY'] = 'your-secret-key'
+socketio = SocketIO(app, cors_allowed_origins="*")
+
+modem_handler = ModemHandler('/dev/ttyUSB2', 115200)
+
+@app.route('/')
+def index():
+    """Serve the frontend."""
+    return render_template('index.html')
+
+@socketio.on('send_ussd')
+def handle_send_ussd(data):
+    """Handle USSD command from frontend."""
+    ussd_code = data.get('ussd_code')
+    if not ussd_code:
+        emit('error', {'message': 'Invalid USSD code'})
+        return
+    response = modem_handler.send_ussd(ussd_code)
+    if response:
+        emit('ussd_response', {'response': response})
+    else:
+        emit('error', {'message': 'Failed to send USSD'})
+
+
+@socketio.on('send_sms')
+def handle_send_sms(data):
+    """Handle SMS sending from frontend."""
+    number = data.get('number')
+    message = data.get('message')
+    if not number or not message:
+        emit('error', {'message': 'Invalid SMS parameters'})
+        return
+    modem_handler.send_sms(number, message)
+    emit('sms_status', {'status': 'SMS sent'})
+
+def on_sms_received(number, message):
+    """Send received SMS to frontend."""
+    socketio.emit('incoming_sms', {'number': number, 'message': message})
+
+    modem_handler.on_sms_received = on_sms_received
+
+@app.route('/test-static')
+def test_static():
+    return app.send_static_file('app.js')
+
+if __name__ == '__main__':
+    # Start modem in a separate thread
+    threading.Thread(target=modem_handler.connect).start()
+    socketio.run(app, host='0.0.0.0', port=5000, debug=True)
