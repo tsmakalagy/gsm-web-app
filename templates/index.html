@@ -88,9 +88,90 @@
                 </div>
             </div>
         </div>
+
+
+        <!-- Debug Console -->
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h2 class="h5 mb-0">Debug Console</h2>
+                    <button class="btn btn-sm btn-outline-danger" onclick="clearDebug()">Clear</button>
+                </div>
+                <div class="card-body">
+                    <pre id="debugConsole" style="max-height: 200px; overflow-y: auto; background: #f8f9fa; padding: 10px;"></pre>
+                </div>
+            </div>
+
+            <!-- Auth Testing Section -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h2 class="h5 mb-0">Authentication Testing</h2>
+                </div>
+                <div class="card-body">
+                    <!-- Send Verification Code Form -->
+                    <form id="sendVerificationForm" class="mb-4">
+                        <h3 class="h6">Step 1: Send Verification Code</h3>
+                        <div class="mb-3">
+                            <label for="verificationPhone" class="form-label">Phone Number</label>
+                            <input type="text" class="form-control" id="verificationPhone" required 
+                                placeholder="Enter phone number (e.g., +1234567890)">
+                        </div>
+                        <button type="submit" class="btn btn-primary">Send Verification Code</button>
+                    </form>
+
+                    <!-- Verify Code Form -->
+                    <form id="verifyCodeForm">
+                        <h3 class="h6">Step 2: Verify Code</h3>
+                        <div class="mb-3">
+                            <label for="verifyPhone" class="form-label">Phone Number</label>
+                            <input type="text" class="form-control" id="verifyPhone" required 
+                                placeholder="Enter phone number">
+                        </div>
+                        <div class="mb-3">
+                            <label for="verificationCode" class="form-label">Verification Code</label>
+                            <input type="text" class="form-control" id="verificationCode" required 
+                                placeholder="Enter the 6-digit code">
+                        </div>
+                        <button type="submit" class="btn btn-primary">Verify Code</button>
+                    </form>
+
+                    <!-- Token Display and Test -->
+                    <div id="tokenSection" class="mt-4" style="display: none;">
+                        <h3 class="h6">Step 3: Test Protected Resource</h3>
+                        <div class="mb-3">
+                            <label class="form-label">Your Token:</label>
+                            <textarea id="authToken" class="form-control" rows="3" readonly></textarea>
+                        </div>
+                        <button id="testProtectedResource" class="btn btn-secondary">
+                            Test Protected Resource
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+
     </div>
 
     <script>
+        function debugLog(type, message, data = null) {
+            const timestamp = new Date().toLocaleTimeString();
+            let logMessage = `[${timestamp}] [${type}] ${message}`;
+            if (data) {
+                logMessage += '\n' + JSON.stringify(data, null, 2);
+            }
+            
+            const console = $('#debugConsole');
+            console.prepend(logMessage + '\n\n');
+            
+            // Keep only last 100 lines
+            if (console.html().split('\n').length > 100) {
+                const lines = console.html().split('\n');
+                console.html(lines.slice(0, 100).join('\n'));
+            }
+        }
+
+        function clearDebug() {
+            $('#debugConsole').empty();
+        }
         $(document).ready(function() {
             localStorage.debug = '*';
             const socket = io({
@@ -291,16 +372,7 @@
                     $items.slice(limit).remove();
                 }
             }
-
-            // Phone number formatting
-            // $('#smsNumber').on('input', function() {
-            //     let number = $(this).val().replace(/\D/g, '');
-            //     if (number.length > 0) {
-            //         number = number.match(new RegExp('.{1,4}', 'g')).join('-');
-            //     }
-            //     $(this).val(number);
-            // });
-
+            
             // Message character counter
             $('#smsMessage').on('input', function() {
                 const maxLength = 160;
@@ -326,6 +398,93 @@
             tooltipTriggerList.map(function (tooltipTriggerEl) {
                 return new bootstrap.Tooltip(tooltipTriggerEl);
             });
+
+            debugLog('INFO', 'Application initialized');
+
+            $('#sendVerificationForm').submit(function(e) {
+                e.preventDefault();
+                const phone = $('#verificationPhone').val();
+                debugLog('INFO', 'Sending verification code request', { phone_number: phone });
+                
+                $.ajax({
+                    url: '/auth/send-code',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({ phone_number: phone }),
+                    success: function(response) {
+                        debugLog('SUCCESS', 'Verification code sent', response);
+                        showAlert('success', 'Verification code sent! Check your phone.');
+                        $('#verifyPhone').val(phone);
+                    },
+                    error: function(xhr, status, error) {
+                        debugLog('ERROR', 'Failed to send verification code', {
+                            status: status,
+                            error: error,
+                            response: xhr.responseText
+                        });
+                        const errorMsg = xhr.responseJSON?.message || 'Failed to send code';
+                        showAlert('danger', errorMsg);
+                    }
+                });
+            });
+
+            // Handle Verify Code
+            $('#verifyCodeForm').submit(function(e) {
+                e.preventDefault();
+                const data = {
+                    phone_number: $('#verifyPhone').val(),
+                    code: $('#verificationCode').val()
+                };
+
+                $.ajax({
+                    url: '/auth/verify-code',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify(data),
+                    success: function(response) {
+                        if (response.token) {
+                            showAlert('success', 'Phone verified successfully!');
+                            $('#authToken').val(response.token);
+                            $('#tokenSection').show();
+                        } else {
+                            showAlert('warning', response.message || 'Verification failed');
+                        }
+                    },
+                    error: function(xhr) {
+                        const errorMsg = xhr.responseJSON?.message || 'Verification failed';
+                        showAlert('danger', errorMsg);
+                    }
+                });
+            });
+
+            // Test Protected Resource
+            $('#testProtectedResource').click(function() {
+                const token = $('#authToken').val();
+                debugLog('INFO', 'Testing protected resource', { token: token });
+                
+                $.ajax({
+                    url: '/protected-resource',
+                    type: 'GET',
+                    headers: {
+                        'Authorization': 'Bearer ' + token
+                    },
+                    success: function(response) {
+                        debugLog('SUCCESS', 'Protected resource accessed', response);
+                        showAlert('success', 'Protected resource accessed: ' + response.message);
+                    },
+                    error: function(xhr, status, error) {
+                        debugLog('ERROR', 'Protected resource access failed', {
+                            status: status,
+                            error: error,
+                            response: xhr.responseText
+                        });
+                        const errorMsg = xhr.responseJSON?.message || 'Access denied';
+                        showAlert('danger', errorMsg);
+                    }
+                });
+            });
+
+
         });
     </script>
     

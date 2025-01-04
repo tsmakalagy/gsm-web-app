@@ -4,6 +4,7 @@ from flask import Flask, jsonify, render_template, request
 from flask_socketio import SocketIO, emit
 from threading import Lock, Thread
 from modem_handler import ModemHandler
+from auth import AuthManager, require_auth
 from config import Config
 import logging
 import json
@@ -43,12 +44,67 @@ def additional_sms_processing(sms):
     """Additional SMS processing if needed."""
     logger.info("Processing SMS in additional callback")
 
-# Initialize ModemHandler with SMS callback
-modem_handler = ModemHandler(
-    config=Config,
-    socketio=socketio,  # Pass the socketio instance
-    sms_callback=additional_sms_processing  # Optional
-)
+def initialize_modem():
+    try:
+        logger.info("Initializing modem...")
+        handler = ModemHandler(
+                    config=Config,
+                    socketio=socketio,  # Pass the socketio instance
+                    sms_callback=additional_sms_processing  # Optional
+                )
+        
+        # Try to connect
+        if not handler.connect():
+            logger.error("Failed to connect to modem")
+            return None
+            
+        # Wait for network
+        if not handler.wait_for_network():
+            logger.error("Failed to register with network")
+            return None
+            
+        # Check network status
+        status_ok, message = handler.check_network_status()
+        if not status_ok:
+            logger.error("Network status check failed: %s", message)
+            return None
+            
+        logger.info("Modem initialized successfully: %s", message)
+        return handler
+        
+    except Exception as e:
+        logger.error("Error initializing modem: %s", str(e), exc_info=True)
+        return None
+
+try:
+    modem_handler = None
+    max_init_attempts = 3
+    
+    for attempt in range(max_init_attempts):
+        logger.info("Attempting modem initialization (attempt %d/%d)", 
+                   attempt + 1, max_init_attempts)
+        
+        modem_handler = initialize_modem()
+        if modem_handler:
+            break
+            
+        logger.warning("Initialization attempt failed, retrying in 5 seconds...")
+        time.sleep(5)
+        
+    if not modem_handler:
+        logger.error("Failed to initialize modem after %d attempts", max_init_attempts)
+except Exception as e:
+    logger.error("Critical error during modem initialization: %s", str(e), exc_info=True)
+
+# # Initialize ModemHandler with SMS callback
+# modem_handler = ModemHandler(
+#     config=Config,
+#     socketio=socketio,  # Pass the socketio instance
+#     sms_callback=additional_sms_processing  # Optional
+
+
+
+auth_manager = AuthManager(modem_handler, Config.SECRET_KEY)
 
 @app.route('/')
 def index():
@@ -128,6 +184,76 @@ def forward_sms():
         return jsonify({'status': 'SMS forwarded successfully'})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@app.route('/auth/send-code', methods=['POST'])
+def send_verification():
+    """Send verification code to phone number."""
+    logger.info("Received verification code request")
+    d = request.json
+    logger.info(d)
+    try:
+        data = request.json
+        logger.debug("Request data: %s", data)
+        phone_number = data.get('phone_number')
+        
+        if not phone_number:
+            logger.warning("Missing phone number in request")
+            return jsonify({
+                'status': 'error',
+                'message': 'Phone number is required'
+            }), 400
+            
+        logger.info("Sending verification code to %s", phone_number)
+        result = auth_manager.send_verification_code(phone_number)
+        logger.info("Send verification result: %s", result)
+        return jsonify(result)
+        
+    except Exception as e:
+        logger.error("Error sending verification code: %s", str(e), exc_info=True)
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+@app.route('/auth/verify-code', methods=['POST'])
+def verify_code():
+    """Verify the code sent to phone number."""
+    logger.info("Received code verification request")
+    try:
+        data = request.json
+        logger.debug("Request data: %s", data)
+        
+        phone_number = data.get('phone_number')
+        code = data.get('code')
+        
+        if not phone_number or not code:
+            logger.warning("Missing phone number or code in request")
+            return jsonify({
+                'status': 'error',
+                'message': 'Phone number and code are required'
+            }), 400
+            
+        logger.info("Verifying code for %s", phone_number)
+        result = auth_manager.verify_code(phone_number, code)
+        logger.info("Verification result: %s", result)
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        logger.error("Error verifying code: %s", str(e), exc_info=True)
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+@app.route('/protected-resource')
+@require_auth(auth_manager)
+def protected_resource():
+    """Example of a protected endpoint."""
+    logger.info("Protected resource accessed by %s", request.user_phone)
+    return jsonify({
+        'message': "Hello {0}! This is a protected resource.".format(request.user_phone)
+    })
 
 def background_worker():
     """Background worker to maintain modem connection and process stored SMS."""
