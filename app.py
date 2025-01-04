@@ -188,31 +188,68 @@ def forward_sms():
 @app.route('/auth/send-code', methods=['POST'])
 def send_verification():
     """Send verification code to phone number."""
-    logger.info("Received verification code request")
-    d = request.json
-    logger.info(d)
+    logger.info("=== New verification code request ===")
+    
+    # Log raw request data
+    logger.debug("Request headers: %s", dict(request.headers))
+    logger.debug("Request method: %s", request.method)
+    logger.debug("Request content type: %s", request.content_type)
+    
     try:
-        data = request.json
-        logger.debug("Request data: %s", data)
+        # Log raw request body
+        logger.debug("Raw request body: %s", request.get_data())
+        
+        # Parse JSON
+        data = request.get_json(force=True)  # force=True will help debug malformed JSON
+        logger.info("Parsed request data: %s", data)
+        
+        if not data:
+            logger.error("No JSON data in request")
+            return jsonify({
+                'status': 'error',
+                'message': 'No JSON data provided'
+            }), 400
+        
+        # Get phone number
         phone_number = data.get('phone_number')
+        logger.info("Extracted phone number: %s", phone_number)
         
         if not phone_number:
-            logger.warning("Missing phone number in request")
+            logger.warning("Missing phone number in request data")
             return jsonify({
                 'status': 'error',
                 'message': 'Phone number is required'
             }), 400
+        
+        # Check auth_manager
+        if not auth_manager:
+            logger.error("auth_manager is None")
+            return jsonify({
+                'status': 'error',
+                'message': 'Authentication service not available'
+            }), 503
             
-        logger.info("Sending verification code to %s", phone_number)
+        # Send verification code
+        logger.info("Calling auth_manager.send_verification_code...")
         result = auth_manager.send_verification_code(phone_number)
-        logger.info("Send verification result: %s", result)
+        logger.info("Result from send_verification_code: %s", result)
+        
+        # Check result
+        if result.get('status') == 'error':
+            logger.error("Error from send_verification_code: %s", 
+                        result.get('message'))
+            return jsonify(result), 500
+            
         return jsonify(result)
         
     except Exception as e:
-        logger.error("Error sending verification code: %s", str(e), exc_info=True)
+        logger.error("=== Error in send_verification ===")
+        logger.error("Error type: %s", type(e).__name__)
+        logger.error("Error message: %s", str(e))
+        logger.error("Traceback:", exc_info=True)
         return jsonify({
             'status': 'error',
-            'message': str(e)
+            'message': 'Internal server error: {}'.format(str(e))
         }), 500
 
 @app.route('/auth/verify-code', methods=['POST'])

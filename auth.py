@@ -5,6 +5,9 @@ import jwt
 import random
 import time
 from functools import wraps
+import logging
+
+logger = logging.getLogger(__name__)
 
 class AuthManager:
     def __init__(self, modem_handler, secret_key, code_ttl=300):
@@ -20,28 +23,63 @@ class AuthManager:
         self.secret_key = secret_key
         self.code_ttl = code_ttl
         self._verification_codes = {}  # Store codes in memory
+
+        # Log initial state
+        logger.info("AuthManager initialized with:")
+        logger.info(" - Code TTL: %d seconds", code_ttl)
+        logger.info(" - Modem Handler: %s", "Present" if modem_handler else "Missing")
         
     def generate_verification_code(self):
         """Generate a 6-digit verification code."""
-        return ''.join(random.choice('0123456789') for _ in range(6))
+        code = ''.join(random.choice('0123456789') for _ in range(6))
+        logger.debug("Generated verification code: %s", code)
+        return code
     
     def send_verification_code(self, phone_number):
         """Send verification code via SMS."""
+        logger.info("Starting send_verification_code for number: %s", phone_number)
         try:
+            # Check modem handler
+            if not self.modem_handler:
+                logger.error("Modem handler is None")
+                return {
+                    'status': 'error',
+                    'message': 'SMS service unavailable - no modem handler'
+                }
+            
+            # Generate code
+            logger.debug("Generating verification code...")
             code = self.generate_verification_code()
             expiry = time.time() + self.code_ttl
+            logger.debug("Code will expire at: %s", 
+                        time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(expiry)))
             
+            # Store code
+            logger.debug("Storing code in memory...")
             self._verification_codes[phone_number] = {
                 'code': code,
                 'expiry': expiry
             }
+            logger.debug("Current stored codes: %s", 
+                        list(self._verification_codes.keys()))
             
+            # Prepare message
             message = "Your verification code is: {0}. Valid for {1} minutes.".format(
                 code, 
                 self.code_ttl // 60
             )
-            self.modem_handler.send_sms(phone_number, message)
+            logger.debug("Prepared SMS message: %s", message)
             
+            # Send SMS
+            logger.info("Attempting to send SMS via modem_handler...")
+            try:
+                self.modem_handler.send_sms(phone_number, message)
+                logger.info("SMS sent successfully")
+            except Exception as sms_error:
+                logger.error("SMS sending failed: %s", str(sms_error), exc_info=True)
+                raise Exception("Failed to send SMS: " + str(sms_error))
+            
+            logger.info("Verification code sent successfully")
             return {
                 'status': 'success',
                 'message': 'Verification code sent',
@@ -49,6 +87,12 @@ class AuthManager:
             }
             
         except Exception as e:
+            logger.error("Error in send_verification_code: %s", str(e), exc_info=True)
+            # Log detailed state
+            logger.error("Current state:")
+            logger.error(" - Modem handler: %s", type(self.modem_handler))
+            logger.error(" - Number of stored codes: %d", 
+                        len(self._verification_codes))
             return {
                 'status': 'error',
                 'message': str(e)
