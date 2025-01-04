@@ -64,15 +64,12 @@ class AuthManager:
                         list(self._verification_codes.keys()))
             
             # Prepare message
-            message = "Your verification code is: {0}. Valid for {1} minutes.".format(
-                code, 
-                self.code_ttl // 60
-            )
+            message = "Your code: {0}".format(code)
             logger.debug("Prepared SMS message: %s", message)
             
             # Send SMS
             logger.info("Attempting to send SMS via modem_handler...")
-            message = "Here is your code: 12345"
+            
             try:
                 self.modem_handler.send_sms(phone_number, message)
                 logger.info("SMS sent successfully")
