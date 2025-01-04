@@ -1,130 +1,173 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-from __future__ import print_function
-from threading import Lock
-from flask import Flask, jsonify, abort, make_response, render_template, session, request
-from flask_socketio import SocketIO, Namespace, emit, send
-from werkzeug import generate_password_hash, check_password_hash
-import time
-import iso8601
+# app.py
+"""Main Flask application for the SMS gateway."""
+from flask import Flask, jsonify, render_template, request
+from flask_socketio import SocketIO, emit
+from threading import Lock, Thread
+from modem_handler import ModemHandler
+from config import Config
+import logging
 import json
-import sys
-import re
-from datetime import datetime
+import time
 
-# Set this variable to "threading", "eventlet" or "gevent" to test the
-# different async modes, or leave it set to None for the application to choose
-# the best option based on installed packages.
-async_mode = None
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
-
-
+# Initialize Flask and SocketIO
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'secret!'
-socketio = SocketIO(app, async_mode=async_mode)
+app.config.from_object(Config)
+socketio = SocketIO(app, cors_allowed_origins="*")
+
+# Global variables
 thread = None
 thread_lock = Lock()
+modem_handler = None
 
-_start = "N"  # Default value, can be updated later
+def handle_sms_callback(sms):
+    """Handle incoming SMS messages."""
+    logger.info("SMS received from: %s", sms.number)
+    
+    data = {
+        "number": sms.number,
+        "time": sms.time.isoformat(),
+        "text": sms.text
+    }
+    
+    socketio.emit('sms_web', json.dumps(data), namespace='/', broadcast=True)
+    logger.info("SMS data emitted to websocket")
 
+def additional_sms_processing(sms):
+    """Additional SMS processing if needed."""
+    logger.info("Processing SMS in additional callback")
+
+# Initialize ModemHandler with SMS callback
+modem_handler = ModemHandler(
+    config=Config,
+    socketio=socketio,  # Pass the socketio instance
+    sms_callback=additional_sms_processing  # Optional
+)
 
 @app.route('/')
 def index():
-    return render_template('index.html', async_mode=socketio.async_mode)
+    """Serve the frontend interface."""
+    return render_template('index.html')
 
-@app.errorhandler(400)
-def not_found(error):
-    return make_response(jsonify( { 'error': 'Bad request' } ), 400)
-
-@app.errorhandler(404)
-def not_found(error):
-    return make_response(jsonify( { 'error': 'Not found' } ), 404)
-
-@app.route('/start', methods=['POST'])
-def start():
-    try:
-        if not request.json or not 'action' in request.json or not 'code' in request.json:
-            abort(400)
-
-        _action = request.json['action']
-        _code = request.json['code']
-        if _action :
-            socketio.emit('message_event', {'action': _action, 'code': _code}, namespace='/handle') # SEND SOCKET TO handle_sms.py
-            return jsonify({'response':'started', 'action':'S'})
-        else:
-            return jsonify({'response':'Error is encountered'})
-
-    except Exception as e:
-        return jsonify({'Exception':str(e)})
-
-@app.route('/sms', methods=['POST'])
-def receive_sms():
-    global _start  # Ensure the global variable is used
-    try:
-        if not request.json or not 'number' in request.json or not 'time' in request.json or not 'text' in request.json:
-            abort(400)
-
-        _number = request.json['number']
-        _text   = request.json['text']
-        _time   = request.json['time']
-
-        _data   = "Message received on: " + _time + ", Content: " + _text
-
-        socketio.emit('my_response', {'data': _data}, namespace='/test')
-
-        if _start == "Y":
-            return jsonify({'response':'started', 'action':'R'})
-        else:
-            return jsonify({'response':'Error is encountered'})
-    except Exception as e:
-        return jsonify({'Exception': str(e)})
-
-@app.route('/set_start', methods=['POST'])
-def set_start():
-    global _start
+@app.route('/send_sms', methods=['POST'])
+def send_sms():
+    """API endpoint to send SMS messages."""
     try:
         data = request.json
-        _start = data.get('start', "N")  # Default to "N" if not provided
-        return jsonify({'response': '_start set to {}'.format(_start)})
+        number = data.get('number')
+        message = data.get('message')
+
+        if not number or not message:
+            return jsonify({
+                'status': 'error',
+                'message': 'Phone number and message are required.'
+            }), 400
+
+        modem_handler.send_sms(number, message)
+        return jsonify({
+            'status': 'success',
+            'message': 'SMS sent successfully'
+        })
+
     except Exception as e:
-        return jsonify({'Exception': str(e)})
+        logger.error("Failed to send SMS: %s", str(e))
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
 
-@socketio.on('sms_web', namespace='/handle')
-def test_message(message):
-    #print(message)
-    message = json.loads(message)
-    _sms_text = message["text"]
-    
-    socketio.emit('sms_web_response', {'data': _sms_text})
+@app.route('/send_ussd', methods=['POST'])
+def send_ussd():
+    """API endpoint to send USSD commands."""
+    try:
+        data = request.json
+        ussd_code = data.get('ussd_code')
 
-@socketio.on('sms', namespace='/handle')
-def test_message(message):
-    print(message)
-    message = json.loads(message)
-    _sms_text = message["text"]
-    
-    socketio.emit('sms_web_response', {'data': _sms_text})
+        if not ussd_code:
+            logger.error("USSD code missing in request")
+            return jsonify({
+                'status': 'error',
+                'message': 'USSD code is required.'
+            }), 400
 
-@socketio.on('ussd', namespace='/handle')
-def test_message(message):
-    print(message)
-    message = json.loads(message)
-    _ussd_text = message["text"]
-    socketio.emit('ussd_response', {'data': _ussd_text})
+        logger.info("Received USSD request with code: %s", ussd_code)
+        response = modem_handler.send_ussd(ussd_code)
+        
+        logger.info("USSD response: %s", response)
+        try:
+            # Emit with namespace and error handling
+            socketio.emit('ussd_response', 
+                         {'response': response.get('response')},
+                         namespace='/',
+                         broadcast=True)
+            logger.info("USSD response emitted successfully")
+        except Exception as e:
+            logger.error("Failed to emit USSD response: {}".format(str(e)))
+        
+        return jsonify(response)
 
-@socketio.on('my_event')
-def test_handle(message):
-    print('Yes baby: {0}'.format(message['data']))
-    socketio.emit('message_event', {'action': 'S', 'code': message['data']}, namespace='/handle')
+    except Exception as e:
+        logger.error("Failed to send USSD command: %s", str(e), exc_info=True)
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
 
-@socketio.on('start', namespace='/handle')
-def test_message(message):
-    print(message)
-    emit('start_response', {'action': 'R'})
+@app.route('/forward_sms', methods=['POST'])
+def forward_sms():
+    """Receive SMS data from modem_handler and emit to frontend."""
+    try:
+        data = request.json
+        socketio.emit('sms_grab', data, namespace='/')
+        return jsonify({'status': 'SMS forwarded successfully'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+def background_worker():
+    """Background worker to maintain modem connection and process stored SMS."""
+    while True:
+        try:
+            if not modem_handler.modem:
+                modem_handler.connect()
+            modem_handler.process_stored_sms()
+        except Exception as e:
+            logger.error("Background worker error: %s", str(e))
+            try:
+                modem_handler.disconnect()
+            except:
+                pass
+        time.sleep(Config.SMS_PROCESS_INTERVAL)
 
 @socketio.on('connect')
-def test_connect():
-    print('Connected [app.py]')
+def handle_connect():
+    """Handle WebSocket connection."""
+    global thread
+    with thread_lock:
+        if thread is None:
+            thread = Thread(target=background_worker)
+            thread.daemon = True
+            thread.start()
+    logger.info("Client connected")
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    """Handle WebSocket disconnection."""
+    logger.info("Client disconnected")
 
 if __name__ == '__main__':
-    socketio.run(app, debug=True)
+    try:
+        socketio.run(
+            app,
+            host=Config.HOST,
+            port=Config.PORT,
+            debug=Config.DEBUG
+        )
+    finally:
+        if modem_handler:
+            modem_handler.disconnect()
