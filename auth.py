@@ -72,6 +72,7 @@ class AuthManager:
             
             # Send SMS
             logger.info("Attempting to send SMS via modem_handler...")
+            message = "Here is your code: 12345"
             try:
                 self.modem_handler.send_sms(phone_number, message)
                 logger.info("SMS sent successfully")
