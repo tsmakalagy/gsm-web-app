@@ -17,15 +17,21 @@ sudo chown $USER:$USER /var/run/sms_gateway
 
 # Create conda environment with Python 2.7
 echo "Creating conda environment with Python 2.7..."
-conda create -n sms_gateway python=2.7 -y
+conda create -n sms_gateway python=2.7 pip -y
 
 # Activate conda environment
 echo "Activating conda environment..."
 source activate sms_gateway
 
+# Update pip in conda environment
+echo "Updating pip..."
+curl https://bootstrap.pypa.io/pip/2.7/get-pip.py --output get-pip.py
+python get-pip.py --force-reinstall
+rm get-pip.py
+
 # Install required packages from requirements.txt
 echo "Installing required packages..."
-pip install -r requirements.txt
+pip install --no-cache-dir -r requirements.txt
 
 # Clone and install gsmmodem
 echo "Installing python-gsmmodem..."
@@ -42,7 +48,7 @@ sudo chown -R $USER:$USER /opt/sms_gateway
 # Create a script to activate conda env and run the service
 cat > /opt/sms_gateway/start_service.sh << 'EOL'
 #!/bin/bash
-source $HOME/miniconda3/etc/profile.d/conda.sh
+source $HOME/miniforge3/etc/profile.d/conda.sh
 conda activate sms_gateway
 cd /opt/sms_gateway
 exec gunicorn --config gunicorn_config.py wsgi:app
