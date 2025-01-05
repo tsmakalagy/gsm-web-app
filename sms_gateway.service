@@ -7,12 +7,13 @@ Type=simple
 User=$USER
 Group=$USER
 WorkingDirectory=/opt/sms_gateway
+Environment="CONDA_ROOT=$HOME/miniforge3"
 Environment="PATH=$HOME/miniforge3/envs/sms_gateway/bin:$PATH"
-StandardOutput=append:/var/log/sms_gateway/service.log
-StandardError=append:/var/log/sms_gateway/service.log
-ExecStart=/bin/bash -c 'source $HOME/miniforge3/etc/profile.d/conda.sh && conda activate sms_gateway && cd /opt/sms_gateway && gunicorn --config gunicorn_config.py wsgi:app'
+ExecStart=/bin/bash -c 'source ${CONDA_ROOT}/etc/profile.d/conda.sh && conda activate sms_gateway && exec gunicorn --config gunicorn_config.py wsgi:app'
 Restart=always
 RestartSec=5
+StandardOutput=append:/var/log/sms_gateway/service.log
+StandardError=append:/var/log/sms_gateway/service.log
 
 [Install]
 WantedBy=multi-user.target
