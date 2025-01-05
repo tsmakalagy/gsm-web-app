@@ -1,0 +1,18 @@
+[Unit]
+Description=SMS Gateway Service
+After=network.target
+
+[Service]
+User=pi
+Group=pi
+WorkingDirectory=/opt/sms_gateway
+Environment="PATH=/opt/sms_gateway/venv/bin"
+ExecStart=/opt/sms_gateway/venv/bin/gunicorn -c gunicorn_config.py wsgi:app
+ExecReload=/bin/kill -s HUP $MAINPID
+ExecStop=/bin/kill -s TERM $MAINPID
+Restart=always
+RestartSec=5
+TimeoutStartSec=30
+
+[Install]
+WantedBy=multi-user.target

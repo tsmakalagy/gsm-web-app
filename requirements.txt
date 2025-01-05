@@ -1,7 +1,20 @@
 flask
 flask-socketio
 python-dotenv
-# Install gsmmodem manually:
+PyJWT
+gunicorn
+eventlet
+requests
+Werkzeug<1.0.0
+Jinja2<3.0.0
+itsdangerous<2.0
+click<8.0
+markupsafe<2.0.0
+greenlet<1.0.0
+python-engineio<4.0.0
+python-socketio<5.0.0
+
+# Note: Install gsmmodem manually:
 # git clone https://github.com/faucamp/python-gsmmodem.git
 # cd python-gsmmodem
 # pip install .
