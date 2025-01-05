@@ -1,6 +1,8 @@
 flask
 flask-socketio
 python-dotenv
+gunicorn
+eventlet
 # Install gsmmodem manually:
 # git clone https://github.com/faucamp/python-gsmmodem.git
 # cd python-gsmmodem
