@@ -1,5 +1,6 @@
 # modem_handler.py
 """GSM modem handling module."""
+from __future__ import print_function
 from gsmmodem.modem import GsmModem
 from gsmmodem.exceptions import TimeoutException
 from datetime import datetime
@@ -27,6 +28,7 @@ class ModemHandler:
             if not self.modem:
                 return False, "Modem not connected"
 
+            # Check if registered to network
             network_name = self.modem.networkName
             signal_strength = self.modem.signalStrength
             
@@ -53,7 +55,13 @@ class ModemHandler:
                 logger.error("Modem port %s does not exist!", self.config.MODEM_PORT)
                 return False
 
-            self.modem = GsmModem(
+            class CustomGsmModem(GsmModem):
+                def write(self, data: str, waitForResponse: bool = True, timeout: int = 5) -> str:
+                    if isinstance(data, str):
+                        data = data.encode()
+                    return super().write(data, waitForResponse, timeout)
+
+            self.modem = CustomGsmModem(
                 self.config.MODEM_PORT,
                 self.config.MODEM_BAUDRATE,
                 smsReceivedCallbackFunc=self.handle_sms
@@ -148,7 +156,7 @@ class ModemHandler:
             raise RuntimeError(f"Failed to send SMS after {max_retries} attempts")
             
         except Exception as e:
-            logger.error("Failed to send SMS: %s", str(e), exc_info=True)
+            logger.error("Failed to send SMS: %s", str(e))
             raise
 
     def handle_sms(self, sms: Any) -> Optional[Dict[str, Any]]:
