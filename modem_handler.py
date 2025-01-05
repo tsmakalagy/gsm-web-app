@@ -32,7 +32,7 @@ class CustomGsmModem(GsmModem):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # Override the serial comm handler with our custom one
-        self._commPort = CustomSerialComms(*args, **kwargs)
+        self._commPort = CustomSerialComms(self.port, self.baudrate)
     
     def write(self, data: Any, waitForResponse: bool = True, timeout: int = 5) -> str:
         """Write to the modem with proper string encoding."""
@@ -85,12 +85,11 @@ class ModemHandler:
                 logger.error("Modem port %s does not exist!", self.config.MODEM_PORT)
                 return False
 
-            # Set up serial port with explicit encoding
+            # Set up serial port
             self.modem = CustomGsmModem(
                 self.config.MODEM_PORT,
                 self.config.MODEM_BAUDRATE,
-                smsReceivedCallbackFunc=self.handle_sms,
-                encoding='utf-8'
+                smsReceivedCallbackFunc=self.handle_sms
             )
 
             logger.info("Connecting to modem...")
