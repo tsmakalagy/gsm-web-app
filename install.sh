@@ -3,28 +3,6 @@
 # Exit on error
 set -e
 
-echo "Installing build dependencies..."
-sudo apt-get update
-sudo apt-get install -y build-essential zlib1g-dev libncurses5-dev libgdbm-dev libnss3-dev libssl-dev libsqlite3-dev libreadline-dev libffi-dev curl libbz2-dev
-
-# Download and compile Python 2.7
-echo "Downloading Python 2.7.18..."
-curl -O https://www.python.org/ftp/python/2.7.18/Python-2.7.18.tgz
-tar -xf Python-2.7.18.tgz
-cd Python-2.7.18
-
-echo "Configuring Python 2.7..."
-./configure --enable-optimizations
-
-echo "Building Python 2.7..."
-make -j$(nproc)
-
-echo "Installing Python 2.7..."
-sudo make altinstall
-
-cd ..
-rm -rf Python-2.7.18*
-
 # Create application directory
 sudo mkdir -p /opt/sms_gateway
 sudo chown $USER:$USER /opt/sms_gateway
@@ -37,22 +15,20 @@ sudo chown $USER:$USER /var/log/sms_gateway
 sudo mkdir -p /var/run/sms_gateway
 sudo chown $USER:$USER /var/run/sms_gateway
 
-# Install pip for Python 2.7
-curl https://bootstrap.pypa.io/pip/2.7/get-pip.py --output get-pip.py
-sudo python2.7 get-pip.py
-rm get-pip.py
+# Create conda environment with Python 2.7
+echo "Creating conda environment with Python 2.7..."
+conda create -n sms_gateway python=2.7 -y
 
-# Install virtualenv
-sudo python2.7 -m pip install virtualenv
-
-# Set up Python 2.7 virtual environment
-python2.7 -m virtualenv /opt/sms_gateway/venv
-source /opt/sms_gateway/venv/bin/activate
+# Activate conda environment
+echo "Activating conda environment..."
+source activate sms_gateway
 
 # Install required packages from requirements.txt
+echo "Installing required packages..."
 pip install -r requirements.txt
 
 # Clone and install gsmmodem
+echo "Installing python-gsmmodem..."
 git clone https://github.com/faucamp/python-gsmmodem.git
 cd python-gsmmodem
 pip install .
@@ -62,6 +38,36 @@ rm -rf python-gsmmodem
 # Copy application files
 sudo cp -r * /opt/sms_gateway/
 sudo chown -R $USER:$USER /opt/sms_gateway
+
+# Create a script to activate conda env and run the service
+cat > /opt/sms_gateway/start_service.sh << 'EOL'
+#!/bin/bash
+source $HOME/miniconda3/etc/profile.d/conda.sh
+conda activate sms_gateway
+cd /opt/sms_gateway
+exec gunicorn --config gunicorn_config.py wsgi:app
+EOL
+
+chmod +x /opt/sms_gateway/start_service.sh
+
+# Create systemd service file that uses conda
+cat > sms_gateway.service << EOL
+[Unit]
+Description=SMS Gateway Service
+After=network.target
+
+[Service]
+Type=simple
+User=$USER
+Group=$USER
+WorkingDirectory=/opt/sms_gateway
+ExecStart=/opt/sms_gateway/start_service.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOL
 
 # Install systemd service
 sudo cp sms_gateway.service /etc/systemd/system/
