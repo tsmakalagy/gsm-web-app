@@ -3,16 +3,16 @@ Description=SMS Gateway Service
 After=network.target
 
 [Service]
-User=pi
-Group=pi
+Type=simple
+User=$USER
+Group=$USER
 WorkingDirectory=/opt/sms_gateway
-Environment="PATH=/opt/sms_gateway/venv/bin"
-ExecStart=/opt/sms_gateway/venv/bin/gunicorn -c gunicorn_config.py wsgi:app
-ExecReload=/bin/kill -s HUP $MAINPID
-ExecStop=/bin/kill -s TERM $MAINPID
+Environment="PATH=$HOME/miniforge3/envs/sms_gateway/bin:$PATH"
+StandardOutput=append:/var/log/sms_gateway/service.log
+StandardError=append:/var/log/sms_gateway/service.log
+ExecStart=/bin/bash -c 'source $HOME/miniforge3/etc/profile.d/conda.sh && conda activate sms_gateway && cd /opt/sms_gateway && gunicorn --config gunicorn_config.py wsgi:app'
 Restart=always
 RestartSec=5
-TimeoutStartSec=30
 
 [Install]
 WantedBy=multi-user.target
