@@ -3,6 +3,28 @@
 # Exit on error
 set -e
 
+echo "Installing build dependencies..."
+sudo apt-get update
+sudo apt-get install -y build-essential zlib1g-dev libncurses5-dev libgdbm-dev libnss3-dev libssl-dev libsqlite3-dev libreadline-dev libffi-dev curl libbz2-dev
+
+# Download and compile Python 2.7
+echo "Downloading Python 2.7.18..."
+curl -O https://www.python.org/ftp/python/2.7.18/Python-2.7.18.tgz
+tar -xf Python-2.7.18.tgz
+cd Python-2.7.18
+
+echo "Configuring Python 2.7..."
+./configure --enable-optimizations
+
+echo "Building Python 2.7..."
+make -j$(nproc)
+
+echo "Installing Python 2.7..."
+sudo make altinstall
+
+cd ..
+rm -rf Python-2.7.18*
+
 # Create application directory
 sudo mkdir -p /opt/sms_gateway
 sudo chown $USER:$USER /opt/sms_gateway
@@ -14,10 +36,6 @@ sudo chown $USER:$USER /var/log/sms_gateway
 # Create run directory
 sudo mkdir -p /var/run/sms_gateway
 sudo chown $USER:$USER /var/run/sms_gateway
-
-# Install Python 2.7 and required system packages
-sudo apt-get update
-sudo apt-get install -y python2.7 curl
 
 # Install pip for Python 2.7
 curl https://bootstrap.pypa.io/pip/2.7/get-pip.py --output get-pip.py
