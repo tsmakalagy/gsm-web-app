@@ -1,7 +1,7 @@
 # modem_handler.py
 """GSM modem handling module."""
 from __future__ import print_function
-from gsmmodem.modem import GsmModem
+from gsmmodem.modem import GsmModem, SerialComms
 from gsmmodem.exceptions import TimeoutException
 from datetime import datetime
 import logging
@@ -9,14 +9,45 @@ import json
 import requests
 import time
 from typing import Optional, Dict, Any, Tuple, Callable
+import serial
 
 logger = logging.getLogger(__name__)
+
+class CustomSerialComms(SerialComms):
+    def write(self, data: Any) -> None:
+        """Write to serial port while handling string encoding."""
+        if isinstance(data, str):
+            data = data.encode('utf-8')
+        elif not isinstance(data, bytes):
+            data = str(data).encode('utf-8')
+        self.port.write(data)
+        
+    def read(self, length: int = 1) -> bytes:
+        """Read from serial port and return bytes."""
+        return self.port.read(length)
+
+class CustomGsmModem(GsmModem):
+    """Custom GSM modem class with proper string handling for Python 3."""
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Override the serial comm handler with our custom one
+        self._commPort = CustomSerialComms(*args, **kwargs)
+    
+    def write(self, data: Any, waitForResponse: bool = True, timeout: int = 5) -> str:
+        """Write to the modem with proper string encoding."""
+        if isinstance(data, str):
+            data = data.encode('utf-8')
+        elif not isinstance(data, bytes):
+            data = str(data).encode('utf-8')
+        response = self._commPort.write(data)
+        return response.decode('utf-8') if isinstance(response, bytes) else response
 
 class ModemHandler:
     def __init__(self, config: Any, socketio: Any, sms_callback: Optional[Callable] = None) -> None:
         """Initialize the modem handler with configuration."""
         self.config = config
-        self.modem: Optional[GsmModem] = None
+        self.modem: Optional[CustomGsmModem] = None
         self.socketio = socketio
         self.external_sms_callback = sms_callback
         logger.info("ModemHandler initialized with config: PORT=%s, BAUDRATE=%s", 
@@ -28,7 +59,6 @@ class ModemHandler:
             if not self.modem:
                 return False, "Modem not connected"
 
-            # Check if registered to network
             network_name = self.modem.networkName
             signal_strength = self.modem.signalStrength
             
@@ -55,38 +85,42 @@ class ModemHandler:
                 logger.error("Modem port %s does not exist!", self.config.MODEM_PORT)
                 return False
 
-            class CustomGsmModem(GsmModem):
-                def write(self, data: str, waitForResponse: bool = True, timeout: int = 5) -> str:
-                    if isinstance(data, str):
-                        data = data.encode()
-                    return super().write(data, waitForResponse, timeout)
-
+            # Set up serial port with explicit encoding
             self.modem = CustomGsmModem(
                 self.config.MODEM_PORT,
                 self.config.MODEM_BAUDRATE,
-                smsReceivedCallbackFunc=self.handle_sms
+                smsReceivedCallbackFunc=self.handle_sms,
+                encoding='utf-8'
             )
 
             logger.info("Connecting to modem...")
-            self.modem.connect(self.config.MODEM_PIN)
+            # If PIN is None or empty string, don't pass it
+            pin = self.config.MODEM_PIN if self.config.MODEM_PIN else None
+            self.modem.connect(pin)
 
             # Wait for network registration
             max_wait = 30  # seconds
             start_time = time.time()
             
             while time.time() - start_time < max_wait:
-                network_status, message = self.check_network_status()
-                if network_status:
-                    logger.info("Network registered: %s", message)
-                    return True
-                logger.info("Waiting for network registration...")
-                time.sleep(2)
+                try:
+                    network_status, message = self.check_network_status()
+                    if network_status:
+                        logger.info("Network registered: %s", message)
+                        return True
+                    logger.info("Waiting for network registration...")
+                    time.sleep(2)
+                except Exception as e:
+                    logger.warning("Error during network check: %s", str(e))
+                    time.sleep(2)
 
-            logger.info("Modem connected successfully")
-            return True
+            logger.warning("Network registration timeout")
+            return False
             
         except Exception as e:
-            logger.error("Failed to connect to modem: %s", str(e))
+            logger.error("Failed to connect to modem: %s", str(e), exc_info=True)
+            if hasattr(e, 'message'):
+                logger.error("Error message: %s", e.message)
             return False
 
     def wait_for_network(self, timeout: int = 30) -> bool:
