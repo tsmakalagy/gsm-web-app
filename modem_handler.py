@@ -1,6 +1,5 @@
 # modem_handler.py
 """GSM modem handling module."""
-from __future__ import print_function
 from gsmmodem.modem import GsmModem
 from gsmmodem.exceptions import TimeoutException
 from datetime import datetime
@@ -8,31 +7,26 @@ import logging
 import json
 import requests
 import time
+from typing import Optional, Dict, Any, Tuple, Callable
 
 logger = logging.getLogger(__name__)
 
 class ModemHandler:
-    # def __init__(self, config, socketio=None):
-    #     """Initialize the modem handler with configuration."""
-    #     self.config = config
-    #     self.modem = None
-    #     self.socketio = socketio
-    def __init__(self, config, socketio, sms_callback=None):
+    def __init__(self, config: Any, socketio: Any, sms_callback: Optional[Callable] = None) -> None:
         """Initialize the modem handler with configuration."""
         self.config = config
-        self.modem = None
+        self.modem: Optional[GsmModem] = None
         self.socketio = socketio
         self.external_sms_callback = sms_callback
         logger.info("ModemHandler initialized with config: PORT=%s, BAUDRATE=%s", 
                    config.MODEM_PORT, config.MODEM_BAUDRATE)
 
-    def check_network_status(self):
+    def check_network_status(self) -> Tuple[bool, str]:
         """Check GSM network registration status."""
         try:
             if not self.modem:
                 return False, "Modem not connected"
 
-            # Check if registered to network
             network_name = self.modem.networkName
             signal_strength = self.modem.signalStrength
             
@@ -43,13 +37,13 @@ class ModemHandler:
             if not network_name:
                 return False, "Not registered to network"
                 
-            return True, "Connected to " + network_name
+            return True, f"Connected to {network_name}"
             
         except Exception as e:
             logger.error("Error checking network status: %s", str(e))
             return False, str(e)
 
-    def connect(self):
+    def connect(self) -> bool:
         """Connect to the GSM modem."""
         try:
             logger.info("Attempting to connect to modem on port %s", self.config.MODEM_PORT)
@@ -69,7 +63,6 @@ class ModemHandler:
             self.modem.connect(self.config.MODEM_PIN)
 
             # Wait for network registration
-            
             max_wait = 30  # seconds
             start_time = time.time()
             
@@ -78,23 +71,22 @@ class ModemHandler:
                 if network_status:
                     logger.info("Network registered: %s", message)
                     return True
-                    
                 logger.info("Waiting for network registration...")
                 time.sleep(2)
 
-
             logger.info("Modem connected successfully")
             return True
+            
         except Exception as e:
             logger.error("Failed to connect to modem: %s", str(e))
             return False
 
-    def wait_for_network(self, timeout=30):
+    def wait_for_network(self, timeout: int = 30) -> bool:
         """Wait for network registration with timeout."""
         start_time = time.time()
         while time.time() - start_time < timeout:
             try:
-                if self.modem.waitForNetworkCoverage(timeout=5):
+                if self.modem and self.modem.waitForNetworkCoverage(timeout=5):
                     network_name = self.modem.networkName
                     signal = self.modem.signalStrength
                     logger.info("Network registered: %s (Signal: %s)", network_name, signal)
@@ -108,7 +100,7 @@ class ModemHandler:
         logger.error("Timeout waiting for network registration")
         return False
 
-    def disconnect(self):
+    def disconnect(self) -> None:
         """Safely disconnect from the modem."""
         if self.modem:
             try:
@@ -117,7 +109,7 @@ class ModemHandler:
             except Exception as e:
                 logger.error("Error disconnecting modem: %s", str(e))
 
-    def send_sms(self, number, message):
+    def send_sms(self, number: str, message: str) -> bool:
         """Send an SMS message."""
         if not self.modem:
             logger.error("Cannot send SMS: Modem not connected")
@@ -128,7 +120,7 @@ class ModemHandler:
             network_ok, status_msg = self.check_network_status()
             if not network_ok:
                 logger.error("Cannot send SMS: %s", status_msg)
-                raise RuntimeError("Network not available: " + status_msg)
+                raise RuntimeError(f"Network not available: {status_msg}")
 
             # Try to send with retries
             max_retries = 3
@@ -136,6 +128,13 @@ class ModemHandler:
                 try:
                     logger.info("Sending SMS to %s (attempt %d/%d)", 
                               number, attempt + 1, max_retries)
+                    
+                    # Ensure proper string encoding
+                    if isinstance(message, bytes):
+                        message = message.decode('utf-8')
+                    if isinstance(number, bytes):
+                        number = number.decode('utf-8')
+                        
                     self.modem.sendSms(number, message)
                     logger.info("SMS sent successfully")
                     return True
@@ -146,21 +145,13 @@ class ModemHandler:
                         continue
                     raise  # Re-raise if it's a different error
                     
-            raise RuntimeError("Failed to send SMS after {0} attempts".format(max_retries))
+            raise RuntimeError(f"Failed to send SMS after {max_retries} attempts")
             
         except Exception as e:
             logger.error("Failed to send SMS: %s", str(e), exc_info=True)
             raise
-        
-        # try:
-        #     self.modem.sendSms(number, message)
-        #     logger.info("SMS sent to %s: %s", number, message)
-        #     return True
-        # except Exception as e:
-        #     logger.error("Failed to send SMS: %s", str(e))
-        #     raise
 
-    def handle_sms(self, sms):
+    def handle_sms(self, sms: Any) -> Optional[Dict[str, Any]]:
         """Callback for handling incoming SMS messages."""
         try:
             logger.info("=== SMS message received ===")
@@ -168,16 +159,21 @@ class ModemHandler:
             logger.info("Time: %s", sms.time)
             logger.info("Message: %s", sms.text)
             
-            # Prepare data
+            # Prepare data with proper string handling
             data = {
-                "number": sms.number,
+                "number": str(sms.number),
                 "time": sms.time.isoformat() if hasattr(sms.time, 'isoformat') else str(sms.time),
-                "text": sms.text
+                "text": str(sms.text)
             }
             
             # Send to app.py REST endpoint
             try:
-                response = requests.post('http://localhost:5000/forward_sms', json=data)
+                response = requests.post(
+                    'http://localhost:5000/forward_sms',
+                    json=data,
+                    headers={'Content-Type': 'application/json'},
+                    timeout=5
+                )
                 if response.status_code == 200:
                     logger.info("SMS data forwarded successfully")
                 else:
@@ -185,13 +181,20 @@ class ModemHandler:
             except Exception as e:
                 logger.error("Error forwarding SMS: %s", str(e))
             
+            # Call external callback if provided
+            if self.external_sms_callback:
+                try:
+                    self.external_sms_callback(data)
+                except Exception as e:
+                    logger.error("Error in external SMS callback: %s", str(e))
+            
             return data
 
         except Exception as e:
             logger.error("Error handling SMS: %s", str(e))
             return None
 
-    def send_ussd(self, ussd_string):
+    def send_ussd(self, ussd_string: str) -> Dict[str, Any]:
         """Send a USSD command and get the response."""
         if not self.modem:
             logger.error("Modem not connected when trying to send USSD")
@@ -199,11 +202,16 @@ class ModemHandler:
 
         logger.info("Attempting to send USSD command: %s", ussd_string)
         try:
+            # Ensure proper string encoding
+            if isinstance(ussd_string, bytes):
+                ussd_string = ussd_string.decode('utf-8')
+                
             response = self.modem.sendUssd(ussd_string)
             logger.info("USSD response received: %s", response.message)
+            
             result = {
                 "status": "success",
-                "response": response.message
+                "response": str(response.message)
             }
             
             if response.sessionActive:
@@ -218,7 +226,7 @@ class ModemHandler:
             logger.error("Error sending USSD command: %s - %s", ussd_string, str(e))
             return {"status": "error", "response": str(e)}
 
-    def process_stored_sms(self):
+    def process_stored_sms(self) -> None:
         """Process any stored SMS messages."""
         if not self.modem:
             raise RuntimeError("Modem not connected")
