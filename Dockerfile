@@ -4,6 +4,13 @@ FROM python:2.7-slim
 # Set the working directory
 WORKDIR /app
 
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    python-dev \
+    git && \
+    rm -rf /var/lib/apt/lists/*
+
+
 # Copy the application files
 COPY . .
 
