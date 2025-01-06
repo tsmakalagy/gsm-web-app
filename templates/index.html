@@ -59,7 +59,7 @@
         
 
         <!-- Real-time Logs Section -->
-        <div class="row">
+        <div class="row mt-3">
             <!-- SMS Log -->
             <div class="col-md-6">
                 <div class="card">
@@ -89,7 +89,7 @@
             </div>
         </div>
 
-        <div class="row">
+        <div class="row mt-3">
             <!-- Parsed SMS Log -->
             <div class="col-md-6">
                 <div class="card">
@@ -107,7 +107,7 @@
 
 
         <!-- Debug Console -->
-         <div>
+         <div class="row mt-3">
             <div class="card mb-4">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h2 class="h5 mb-0">Debug Console</h2>
@@ -277,6 +277,45 @@
                     limitLogEntries('parsedSmsLog'); // Limit log entries to prevent overflow
                 } catch (error) {
                     console.error('Error displaying parsed SMS:', error, data);
+                }
+            });
+
+            // Listen for multi-part SMS data
+            socket.on('multi_part_sms', (data) => {
+                try {
+                    console.log('Received multi-part SMS:', data);
+
+                    // Display the multi-part SMS in a log
+                    $('#parsedSmsLog').prepend(`
+                        <li class="list-group-item">
+                            <strong>Sender:</strong> ${data.sender} (${data.phone || 'Unknown'})<br>
+                            <strong>Message:</strong> ${data.message}<br>
+                            <strong>Part:</strong> ${data.part_number} of ${data.total_parts}<br>
+                            <strong>Timestamp:</strong> ${new Date(data.timestamp).toLocaleString()}
+                        </li>
+                    `);
+                    limitLogEntries('parsedSmsLog');
+                } catch (error) {
+                    console.error('Error displaying multi-part SMS:', error, data);
+                }
+            });
+
+            // Listen for raw SMS data
+            socket.on('raw_sms', (data) => {
+                try {
+                    console.log('Received raw SMS:', data);
+
+                    // Display the raw SMS in a log
+                    $('#incomingSms').prepend(`
+                        <li class="list-group-item">
+                            <strong>Sender:</strong> ${data.sender}<br>
+                            <strong>Message:</strong> ${data.message}<br>
+                            <strong>Timestamp:</strong> ${new Date(data.timestamp).toLocaleString()}
+                        </li>
+                    `);
+                    limitLogEntries('incomingSms');
+                } catch (error) {
+                    console.error('Error displaying raw SMS:', error, data);
                 }
             });
 

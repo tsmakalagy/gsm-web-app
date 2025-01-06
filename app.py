@@ -303,6 +303,44 @@ def handle_parsed_sms():
     except Exception as e:
         logger.error("Error handling parsed SMS: %s", str(e), exc_info=True)
         return jsonify({'status': 'error', 'message': str(e)}), 500
+    
+@app.route('/multi-part-sms', methods=['POST'])
+def handle_multi_part_sms():
+    """Handle multi-part SMS data."""
+    try:
+        data = request.json
+        if not data:
+            return jsonify({'status': 'error', 'message': 'No data provided'}), 400
+
+        # Log multi-part SMS data
+        logger.info("Received multi-part SMS: %s", data)
+
+        # Emit multi-part SMS to the frontend
+        socketio.emit('multi_part_sms', data, namespace='/')
+
+        return jsonify({'status': 'success', 'message': 'Multi-part SMS received', 'data': data}), 200
+    except Exception as e:
+        logger.error("Error handling multi-part SMS: %s", str(e), exc_info=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+    
+@app.route('/raw-sms', methods=['POST'])
+def handle_raw_sms():
+    """Handle raw SMS data."""
+    try:
+        data = request.json
+        if not data:
+            return jsonify({'status': 'error', 'message': 'No data provided'}), 400
+
+        # Log raw SMS data
+        logger.info("Received raw SMS: %s", data)
+
+        # Emit raw SMS to the frontend
+        socketio.emit('raw_sms', data, namespace='/')
+
+        return jsonify({'status': 'success', 'message': 'Raw SMS received', 'data': data}), 200
+    except Exception as e:
+        logger.error("Error handling raw SMS: %s", str(e), exc_info=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @app.route('/protected-resource')
 @require_auth(auth_manager)
