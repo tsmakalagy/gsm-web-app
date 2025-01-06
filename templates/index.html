@@ -89,8 +89,25 @@
             </div>
         </div>
 
+        <div class="row">
+            <!-- Parsed SMS Log -->
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="h5 mb-0">Parsed SMS Log</h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="log-container" style="max-height: 300px; overflow-y: auto;">
+                            <ul class="list-group" id="parsedSmsLog"></ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
 
         <!-- Debug Console -->
+         <div>
             <div class="card mb-4">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h2 class="h5 mb-0">Debug Console</h2>
@@ -147,7 +164,7 @@
                     </div>
                 </div>
             </div>
-
+        </div>
 
     </div>
 
@@ -240,6 +257,26 @@
                     limitLogEntries('ussdLog');
                 } catch (error) {
                     console.error('Error processing USSD response:', error, data);
+                }
+            });
+
+            socket.on('parsed_sms', (data) => {
+                try {
+                    console.log('Received parsed SMS:', data);
+
+                    // Format and display the parsed SMS
+                    $('#parsedSmsLog').prepend(`
+                        <li class="list-group-item">
+                            <strong>Sender:</strong> ${data.sender} (${data.phone})<br>
+                            <strong>Amount:</strong> ${data.amount} Ar<br>
+                            <strong>Date:</strong> ${new Date(data.date).toLocaleString()}<br>
+                            <strong>Balance:</strong> ${data.balance} Ar<br>
+                            <strong>Reference:</strong> ${data.reference}
+                        </li>
+                    `);
+                    limitLogEntries('parsedSmsLog'); // Limit log entries to prevent overflow
+                } catch (error) {
+                    console.error('Error displaying parsed SMS:', error, data);
                 }
             });
 

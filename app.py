@@ -282,6 +282,27 @@ def verify_code():
             'status': 'error',
             'message': str(e)
         }), 500
+    
+@app.route('/parsed-sms', methods=['POST'])
+def handle_parsed_sms():
+    """Handle parsed SMS data from the Flutter app."""
+    try:
+        data = request.json
+        if not data:
+            return jsonify({'status': 'error', 'message': 'No data provided'}), 400
+
+        # Extract and validate fields
+        required_fields = ['amount', 'sender', 'phone', 'date', 'balance', 'reference']
+        if not all(field in data for field in required_fields):
+            return jsonify({'status': 'error', 'message': 'Missing required fields'}), 400
+
+        # Emit parsed SMS data to the frontend
+        socketio.emit('parsed_sms', data, namespace='/')
+
+        return jsonify({'status': 'success', 'message': 'Parsed SMS processed successfully'}), 200
+    except Exception as e:
+        logger.error("Error handling parsed SMS: %s", str(e), exc_info=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @app.route('/protected-resource')
 @require_auth(auth_manager)
