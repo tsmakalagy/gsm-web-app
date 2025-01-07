@@ -334,7 +334,6 @@ def handle_raw_sms():
                 "sender": sender,
                 "raw_message": raw_sms,
                 "date_time": timestamp.isoformat(),
-                "parsed": False
             }
         else:
             # Use parsed mobile money SMS data
@@ -346,7 +345,6 @@ def handle_raw_sms():
                 "balance": parsed_sms["balance"],
                 "reference": parsed_sms["reference"],
                 "raw_message": raw_sms,
-                "parsed": True
             }
 
         logger.info("Sending to Supabase: %s", sms_data)
