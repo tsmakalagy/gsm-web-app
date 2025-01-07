@@ -258,7 +258,7 @@ def handle_ussd_session():
         return jsonify(response)
 
     except Exception as e:
-        logger.error(f"Error handling USSD session: {str(e)}", exc_info=True)
+        logger.error("Error handling USSD session: {}".format(str(e)), exc_info=True)
         return jsonify({
             'status': 'error',
             'message': str(e)
@@ -299,7 +299,7 @@ def cancel_ussd_session():
             }), 400
 
     except Exception as e:
-        logger.error(f"Error cancelling USSD session: {str(e)}", exc_info=True)
+        logger.error("Error cancelling USSD session: {}".format(str(e)), exc_info=True)
         return jsonify({
             'status': 'error',
             'message': str(e)
