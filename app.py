@@ -9,6 +9,9 @@ from config import Config
 import logging
 import json
 import time
+import re
+import requests
+from datetime import datetime
 
 # Setup logging
 logging.basicConfig(
@@ -21,6 +24,10 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 app.config.from_object(Config)
 socketio = SocketIO(app, cors_allowed_origins="*")
+
+SUPABASE_API_URL = "https://jfdpajjqwfpapdakiohz.supabase.co/rest/v1/mobile_money_sms"
+SUPABASE_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpmZHBhampxd2ZwYXBkYWtpb2h6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzYyNjUxNjQsImV4cCI6MjA1MTg0MTE2NH0.R3LhaKyREcXrBwNj8XsX8AOdgme5b382OZSR1yUFHRk"
+
 
 # Global variables
 thread = None
@@ -174,6 +181,129 @@ def send_ussd():
             'status': 'error',
             'message': str(e)
         }), 500
+    
+@app.route('/ussd', methods=['POST'])
+def send_ussd():
+    """API endpoint to send USSD commands."""
+    try:
+        data = request.json
+        ussd_code = data.get('ussd_code')
+        session_id = data.get('session_id')  # May be None for new sessions
+
+        if not ussd_code:
+            logger.error("USSD code missing in request")
+            return jsonify({
+                'status': 'error',
+                'message': 'USSD code is required.'
+            }), 400
+
+        logger.info(f"Received USSD request - Code: {ussd_code}, Session: {session_id}")
+        
+        response = modem_handler.send_ussd(ussd_code, session_id)
+        logger.info(f"USSD response: {response}")
+
+        # Emit response via WebSocket
+        try:
+            socketio.emit('ussd_response', {
+                'response': response.get('response'),
+                'session_id': response.get('session_id'),
+                'expects_input': response.get('expects_input', False),
+                'step': response.get('step', 1)
+            }, namespace='/')
+            logger.info("USSD response emitted successfully")
+        except Exception as e:
+            logger.error(f"Failed to emit USSD response: {str(e)}")
+
+        return jsonify(response)
+
+    except Exception as e:
+        logger.error(f"Failed to send USSD command: {str(e)}", exc_info=True)
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+@app.route('/ussd/session', methods=['POST'])
+def handle_ussd_session():
+    """Handle USSD session responses."""
+    try:
+        data = request.json
+        session_id = data.get('session_id')
+        input_value = data.get('input')
+        is_complete = data.get('is_complete', False)
+
+        if not session_id:
+            return jsonify({
+                'status': 'error',
+                'message': 'Session ID is required'
+            }), 400
+
+        response = modem_handler.handle_ussd_session(
+            session_id=session_id,
+            input_value=input_value,
+            is_complete=is_complete
+        )
+
+        # Emit session update via WebSocket
+        try:
+            socketio.emit('ussd_session_update', {
+                'session_id': session_id,
+                'response': response.get('response'),
+                'status': response.get('status'),
+                'is_complete': response.get('is_complete', False)
+            }, namespace='/')
+        except Exception as e:
+            logger.error(f"Failed to emit session update: {str(e)}")
+
+        return jsonify(response)
+
+    except Exception as e:
+        logger.error(f"Error handling USSD session: {str(e)}", exc_info=True)
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+@app.route('/ussd/cancel', methods=['POST'])
+def cancel_ussd_session():
+    """Cancel an active USSD session."""
+    try:
+        data = request.json
+        session_id = data.get('session_id')
+
+        if not session_id:
+            return jsonify({
+                'status': 'error',
+                'message': 'Session ID is required'
+            }), 400
+
+        success = modem_handler.cancel_ussd_session(session_id)
+        
+        if success:
+            # Emit cancellation via WebSocket
+            try:
+                socketio.emit('ussd_session_cancelled', {
+                    'session_id': session_id
+                }, namespace='/')
+            except Exception as e:
+                logger.error(f"Failed to emit session cancellation: {str(e)}")
+
+            return jsonify({
+                'status': 'success',
+                'message': 'USSD session cancelled'
+            })
+        else:
+            return jsonify({
+                'status': 'error',
+                'message': 'Failed to cancel USSD session'
+            }), 400
+
+    except Exception as e:
+        logger.error(f"Error cancelling USSD session: {str(e)}", exc_info=True)
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
 
 @app.route('/forward_sms', methods=['POST'])
 def forward_sms():
@@ -283,45 +413,21 @@ def verify_code():
             'message': str(e)
         }), 500
     
-@app.route('/parsed-sms', methods=['POST'])
-def handle_parsed_sms():
-    """Handle parsed SMS data from the Flutter app."""
-    try:
-        data = request.json
-        if not data:
-            return jsonify({'status': 'error', 'message': 'No data provided'}), 400
-
-        # Extract and validate fields
-        required_fields = ['amount', 'sender', 'phone', 'date', 'balance', 'reference']
-        if not all(field in data for field in required_fields):
-            return jsonify({'status': 'error', 'message': 'Missing required fields'}), 400
-
-        # Emit parsed SMS data to the frontend
-        socketio.emit('parsed_sms', data, namespace='/')
-
-        return jsonify({'status': 'success', 'message': 'Parsed SMS processed successfully'}), 200
-    except Exception as e:
-        logger.error("Error handling parsed SMS: %s", str(e), exc_info=True)
-        return jsonify({'status': 'error', 'message': str(e)}), 500
-    
-@app.route('/multi-part-sms', methods=['POST'])
-def handle_multi_part_sms():
-    """Handle multi-part SMS data."""
-    try:
-        data = request.json
-        if not data:
-            return jsonify({'status': 'error', 'message': 'No data provided'}), 400
-
-        # Log multi-part SMS data
-        logger.info("Received multi-part SMS: %s", data)
-
-        # Emit multi-part SMS to the frontend
-        socketio.emit('multi_part_sms', data, namespace='/')
-
-        return jsonify({'status': 'success', 'message': 'Multi-part SMS received', 'data': data}), 200
-    except Exception as e:
-        logger.error("Error handling multi-part SMS: %s", str(e), exc_info=True)
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+def parse_sms(sms):
+    """Parse the SMS using regex."""
+    pattern = r"(\d+\s*Ar)\s*recu\s*de\s*([^\(]+)\((\d+)\)\s*le\s*(\d{2}/\d{2}/\d{2})\s*a\s*(\d{2}:\d{2}).*Solde\s*:\s*(\d+\s*Ar).*Ref:\s*(\d+)"
+    match = re.search(pattern, sms)
+    if match:
+        return {
+            "amount": int(match.group(1).replace("Ar", "").replace(" ", "")),
+            "receiver": match.group(2).strip(),
+            "sender": match.group(3),
+            "date_time": datetime.strptime(f"{match.group(4)} {match.group(5)}", "%d/%m/%y %H:%M"),
+            "balance": int(match.group(6).replace("Ar", "").replace(" ", "")),
+            "reference": match.group(7),
+            "raw_message": sms
+        }
+    return None
     
 @app.route('/raw-sms', methods=['POST'])
 def handle_raw_sms():
@@ -332,7 +438,9 @@ def handle_raw_sms():
             return jsonify({'status': 'error', 'message': 'No data provided'}), 400
 
         # Log raw SMS data
-        logger.info("Received raw SMS: %s", data)
+        raw_sms = data['sms']
+        logger.info("Received raw data: %s", data)
+        logger.info("Received raw SMS: %s", raw_sms)
 
         # Emit raw SMS to the frontend
         socketio.emit('raw_sms', data, namespace='/')
