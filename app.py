@@ -352,7 +352,7 @@ def handle_raw_sms():
             logger.error("Supabase error: Status %d, Response: %s", response.status_code, response.text)
             return jsonify({
                 'status': 'error',
-                'message': f'Supabase error: {response.text}',
+                'message': 'Supabase error: {}'.format(response.text),
                 'sent_data': sms_data
             }), response.status_code
 
