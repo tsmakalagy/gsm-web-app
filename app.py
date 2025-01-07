@@ -350,7 +350,7 @@ def handle_raw_sms():
         # If parsing fails, create a basic SMS record
         if not parsed_sms:
             try:
-                timestamp = datetime.fromisoformat(timestamp_str) if timestamp_str else datetime.now()
+                timestamp = datetime.strptime(timestamp_str, "%Y-%m-%dT%H:%M:%S.%f") if timestamp_str else datetime.now()
             except (ValueError, TypeError):
                 logger.warning("Invalid timestamp format: %s, using current time", timestamp_str)
                 timestamp = datetime.now()
