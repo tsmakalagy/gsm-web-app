@@ -292,8 +292,13 @@ def verify_code():
 def parse_sms(sms):
     """Parse the SMS using regex."""
     pattern = r"(\d+\s*Ar)\s*recu\s*de\s*([^\(]+)\((\d+)\)\s*le\s*(\d{2}/\d{2}/\d{2})\s*a\s*(\d{2}:\d{2}).*Solde\s*:\s*(\d+\s*Ar).*Ref:\s*(\d+)"
+    
+    # Add debug logging
+    logger.info("Attempting to parse SMS: %s", sms)
     match = re.search(pattern, sms)
+    
     if match:
+        logger.info("Groups matched: %s", [match.group(i) for i in range(8)])
         return {
             "amount": int(match.group(1).replace("Ar", "").replace(" ", "")),
             "receiver": match.group(2).strip(),
@@ -303,6 +308,23 @@ def parse_sms(sms):
             "reference": match.group(7),
             "raw_message": sms
         }
+    else:
+        # Debug: Try matching parts of the pattern
+        parts = [
+            (r"\d+\s*Ar", "amount"),
+            (r"recu\s*de\s*([^\(]+)", "receiver name"),
+            (r"\((\d+)\)", "phone number"),
+            (r"le\s*(\d{2}/\d{2}/\d{2})", "date"),
+            (r"a\s*(\d{2}:\d{2})", "time"),
+            (r"Solde\s*:\s*(\d+\s*Ar)", "balance"),
+            (r"Ref:\s*(\d+)", "reference")
+        ]
+        
+        logger.info("Parsing failed. Checking individual parts:")
+        for pattern_part, name in parts:
+            part_match = re.search(pattern_part, sms)
+            logger.info("%s match: %s", name, part_match.group(0) if part_match else "NO MATCH")
+    
     return None
     
 @app.route('/raw-sms', methods=['POST'])
@@ -310,13 +332,16 @@ def handle_raw_sms():
     """Handle raw SMS data."""
     try:
         data = request.json
-        logger.info("Received data: %s", data)
+        logger.info("Received request headers: %s", request.headers)
+        logger.info("Received raw data: %s", request.get_data())
+        logger.info("Parsed json data: %s", data)
         
         if not data or "message" not in data:
             return jsonify({'status': 'error', 'message': 'No SMS data provided'}), 400
 
         raw_sms = data['message']
         sender = data.get('sender')
+        logger.info("Extracted sender: %s", sender)
         timestamp_str = data.get('timestamp')
         
         # Try to parse as mobile money SMS
