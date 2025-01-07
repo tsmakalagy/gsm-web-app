@@ -422,7 +422,7 @@ def parse_sms(sms):
             "amount": int(match.group(1).replace("Ar", "").replace(" ", "")),
             "receiver": match.group(2).strip(),
             "sender": match.group(3),
-            "date_time": datetime.strptime(f"{match.group(4)} {match.group(5)}", "%d/%m/%y %H:%M"),
+            "date_time": datetime.strptime("{} {}".format(match.group(4), match.group(5)), "%d/%m/%y %H:%M"),
             "balance": int(match.group(6).replace("Ar", "").replace(" ", "")),
             "reference": match.group(7),
             "raw_message": sms
