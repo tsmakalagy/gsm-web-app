@@ -336,7 +336,7 @@ def handle_raw_sms():
         # Save to Supabase
         headers = {
             "apikey": SUPABASE_API_KEY,
-            "Authorization": f"Bearer {SUPABASE_API_KEY}",
+            "Authorization": "Bearer {}".format(SUPABASE_API_KEY),
             "Content-Type": "application/json"
         }
         response = requests.post(SUPABASE_API_URL, json=sms_data, headers=headers)
