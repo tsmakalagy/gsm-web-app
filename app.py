@@ -289,91 +289,111 @@ def verify_code():
             'message': str(e)
         }), 500
     
-def parse_sms(sms):
-    """Parse the SMS using regex."""
-    pattern = r"(\d+\s*Ar)\s*recu\s*de\s*([^\(]+)\((\d+)\)\s*le\s*(\d{2}/\d{2}/\d{2})\s*a\s*(\d{2}:\d{2}).*Solde\s*:\s*(\d+\s*Ar).*Ref:\s*(\d+)"
+def parse_sms(sms_text):
+    """
+    Parse MVola SMS with support for both French and Malagasy formats.
+    """
+    # Define patterns for both languages
+    french_pattern = r"""
+        ^(?P<amount>\d+(?:\s*\d+)*)\s*Ar\s*    # Amount with optional spaces
+        recu\s+de\s+                           # Transaction indicator (French)
+        (?P<name>[^(]+)                        # Name (everything until opening parenthesis)
+        \((?P<phone>\d+)\)\s*                  # Phone number in parentheses
+        le\s+
+        (?P<day>\d{2})/(?P<month>\d{2})/(?P<year>\d{2})\s*  # Date
+        a\s+(?P<hour>\d{2}):(?P<minute>\d{2})   # Time
+        .*?                                    # Non-greedy match for optional reason/server text
+        Solde\s*:\s*                          # Balance indicator
+        (?P<balance>\d+(?:\s*\d+)*)\s*Ar      # Balance amount
+        .*?                                    # Non-greedy match for any text
+        Ref:\s*(?P<reference>\d+)             # Reference number
+        """
+
+    malagasy_pattern = r"""
+        ^Nahazo\s+                            # Transaction indicator (Malagasy)
+        (?P<amount>\d+(?:\s*\d+)*)\s*Ar\s*    # Amount
+        avy\s+any\s+amin['']ny\s+             # From indicator
+        (?P<name>[^(]+)                        # Name
+        \((?P<phone>\d+)\)\s*                  # Phone number
+        ny\s+
+        (?P<day>\d{2})/(?P<month>\d{2})/(?P<year>\d{2})\s+  # Date
+        (?P<hour>\d{2}):(?P<minute>\d{2})      # Time
+        .*?                                    # Non-greedy match for reason
+        Ny\s+volanao\s+dia\s+                 # Balance indicator
+        (?P<balance>\d+(?:\s*\d+)*)\s*Ar      # Balance
+        .*?                                    # Non-greedy match
+        Ref:\s*(?P<reference>\d+)             # Reference
+        """
     
-    # Add debug logging
-    logger.info("Attempting to parse SMS: %s", sms)
-    match = re.search(pattern, sms)
+    match = re.search(french_pattern, sms_text, re.VERBOSE | re.IGNORECASE)
+    if not match:
+        match = re.search(malagasy_pattern, sms_text, re.VERBOSE | re.IGNORECASE)
     
     if match:
-        logger.info("Groups matched: %s", [match.group(i) for i in range(8)])
-        return {
-            "amount": int(match.group(1).replace("Ar", "").replace(" ", "")),
-            "receiver": match.group(2).strip(),
-            "sender": match.group(3),
-            "date_time": datetime.strptime("{} {}".format(match.group(4), match.group(5)), "%d/%m/%y %H:%M"),
-            "balance": int(match.group(6).replace("Ar", "").replace(" ", "")),
-            "reference": match.group(7),
-            "raw_message": sms
-        }
+        try:
+            # Extract all matched groups as a dictionary
+            result = match.groupdict()
+            
+            # Clean up amounts by removing spaces
+            for key in ['amount', 'balance']:
+                if result.get(key):
+                    result[key] = int(re.sub(r'(\d)\s+(\d)', r'\1\2', result[key]))
+            
+            # Format datetime
+            date_str = "{}-{}-{} {}:{}:00".format(
+                result['year'], result['month'], result['day'],
+                result['hour'], result['minute']
+            )
+            date_obj = datetime.strptime(date_str, '%y-%m-%d %H:%M:%S')
+            
+            # Create the final parsed data matching the database schema
+            parsed_data = {
+                "raw_message": sms_text,
+                "type": "in",  # All examples are incoming transactions
+                "amount": result['amount'],
+                "name": result['name'].strip(),
+                "phone": result['phone'],
+                "date_time": date_obj.strftime('%Y-%m-%d %H:%M:%S'),
+                "balance": result['balance'],
+                "reference": result['reference'],
+                "correspondent_type": "Remitter"  # Since all examples are incoming
+            }
+            
+            logger.info("Successfully parsed: %s", parsed_data)
+            return parsed_data
+            
+        except Exception as e:
+            logger.error("Error parsing matched groups: %s", str(e))
+            return None
     else:
-        # Debug: Try matching parts of the pattern
-        parts = [
-            (r"\d+\s*Ar", "amount"),
-            (r"recu\s*de\s*([^\(]+)", "receiver name"),
-            (r"\((\d+)\)", "phone number"),
-            (r"le\s*(\d{2}/\d{2}/\d{2})", "date"),
-            (r"a\s*(\d{2}:\d{2})", "time"),
-            (r"Solde\s*:\s*(\d+\s*Ar)", "balance"),
-            (r"Ref:\s*(\d+)", "reference")
-        ]
-        
-        logger.info("Parsing failed. Checking individual parts:")
-        for pattern_part, name in parts:
-            part_match = re.search(pattern_part, sms)
-            logger.info("%s match: %s", name, part_match.group(0) if part_match else "NO MATCH")
-    
-    return None
-    
+        logger.info("No match found for SMS")
+        return None
+
 @app.route('/raw-sms', methods=['POST'])
 def handle_raw_sms():
     """Handle raw SMS data."""
     try:
         data = request.json
-        logger.info("Received request headers: %s", request.headers)
-        logger.info("Received raw data: %s", request.get_data())
-        logger.info("Parsed json data: %s", data)
+        logger.info("Received data: %s", data)
         
         if not data or "message" not in data:
             return jsonify({'status': 'error', 'message': 'No SMS data provided'}), 400
 
         raw_sms = data['message']
-        sender = data.get('sender')
-        logger.info("Extracted sender: %s", sender)
-        timestamp_str = data.get('timestamp')
-        
-        # Try to parse as mobile money SMS
         parsed_sms = parse_sms(raw_sms)
         
-        # If parsing fails, create a basic SMS record
         if not parsed_sms:
-            try:
-                timestamp = datetime.strptime(timestamp_str, "%Y-%m-%dT%H:%M:%S.%f") if timestamp_str else datetime.now()
-            except (ValueError, TypeError):
-                logger.warning("Invalid timestamp format: %s, using current time", timestamp_str)
-                timestamp = datetime.now()
-
+            # Store unparsed SMS with minimal data
             sms_data = {
-                "sender": sender,
                 "raw_message": raw_sms,
-                "date_time": timestamp.isoformat(),
+                "date_time": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             }
         else:
-            # Use parsed mobile money SMS data
-            sms_data = {
-                "amount": parsed_sms["amount"],
-                "receiver": parsed_sms["receiver"],
-                "sender": parsed_sms["sender"],
-                "date_time": parsed_sms["date_time"].isoformat(),
-                "balance": parsed_sms["balance"],
-                "reference": parsed_sms["reference"],
-                "raw_message": raw_sms,
-            }
+            sms_data = parsed_sms
 
         logger.info("Sending to Supabase: %s", sms_data)
 
+        # Use Supabase config from Config class
         supabase_url = app.config['SUPABASE_API_URL']
         supabase_key = app.config['SUPABASE_API_KEY']
 
@@ -391,13 +411,15 @@ def handle_raw_sms():
             }
         )
         
-        if response.status_code != 200:
+        if response.status_code not in [200, 201]:
             logger.error("Supabase error: Status %d, Response: %s", response.status_code, response.text)
             return jsonify({
                 'status': 'error',
                 'message': 'Supabase error: {}'.format(response.text),
                 'sent_data': sms_data
             }), response.status_code
+        else:
+            logger.info("Successfully saved to Supabase: Status %d", response.status_code)
 
         message = "SMS successfully parsed and saved" if parsed_sms else "SMS saved without parsing"
         return jsonify({'status': 'success', 'message': message, 'data': sms_data}), 200
