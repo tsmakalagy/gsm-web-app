@@ -311,20 +311,44 @@ def handle_raw_sms():
     """Handle raw SMS data."""
     try:
         data = request.json
-        if not data:
-            return jsonify({'status': 'error', 'message': 'No data provided'}), 400
+        if not data or "sms" not in data:
+            return jsonify({'status': 'error', 'message': 'No SMS data provided'}), 400
 
-        # Log raw SMS data
-        raw_sms = data['sms']
-        logger.info("Received raw data: %s", data)
+        # Log raw SMS
+        raw_sms = data['message']
         logger.info("Received raw SMS: %s", raw_sms)
 
-        # Emit raw SMS to the frontend
-        socketio.emit('raw_sms', data, namespace='/')
+        # Parse SMS
+        parsed_sms = parse_sms(raw_sms)
 
-        return jsonify({'status': 'success', 'message': 'Raw SMS received', 'data': data}), 200
+        # Prepare the data to save
+        sms_data = {
+            "amount": parsed_sms.get("amount") if parsed_sms else None,
+            "receiver": parsed_sms.get("receiver") if parsed_sms else None,
+            "sender": parsed_sms.get("sender") if parsed_sms else None,
+            "date_time": parsed_sms.get("date_time") if parsed_sms else None,
+            "balance": parsed_sms.get("balance") if parsed_sms else None,
+            "reference": parsed_sms.get("reference") if parsed_sms else None,
+            "raw_message": raw_sms,
+            "parsed": bool(parsed_sms)  # True if parsing succeeded, False otherwise
+        }
+
+        # Save to Supabase
+        headers = {
+            "apikey": SUPABASE_API_KEY,
+            "Authorization": f"Bearer {SUPABASE_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        response = requests.post(SUPABASE_API_URL, json=sms_data, headers=headers)
+        response.raise_for_status()
+
+        # Emit to frontend via WebSocket
+        socketio.emit('raw_sms', sms_data, namespace='/')
+
+        message = "SMS successfully parsed and saved" if parsed_sms else "SMS saved without parsing"
+        return jsonify({'status': 'success', 'message': message, 'data': sms_data}), 200
     except Exception as e:
-        logger.error("Error handling raw SMS: %s", str(e), exc_info=True)
+        logger.error("Error handling SMS: %s", str(e), exc_info=True)
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @app.route('/protected-resource')
