@@ -212,12 +212,12 @@ def send_ussd():
             }, namespace='/')
             logger.info("USSD response emitted successfully")
         except Exception as e:
-            logger.error(f"Failed to emit USSD response: {str(e)}")
+            logger.error("Failed to emit USSD response: {}".format(str(e)))
 
         return jsonify(response)
 
     except Exception as e:
-        logger.error(f"Failed to send USSD command: {str(e)}", exc_info=True)
+        logger.error("Failed to send USSD command: {}".format(str(e)), exc_info=True)
         return jsonify({
             'status': 'error',
             'message': str(e)
@@ -253,7 +253,7 @@ def handle_ussd_session():
                 'is_complete': response.get('is_complete', False)
             }, namespace='/')
         except Exception as e:
-            logger.error(f"Failed to emit session update: {str(e)}")
+            logger.error("Failed to emit session update: {}".format(str(e)))
 
         return jsonify(response)
 
@@ -286,7 +286,7 @@ def cancel_ussd_session():
                     'session_id': session_id
                 }, namespace='/')
             except Exception as e:
-                logger.error(f"Failed to emit session cancellation: {str(e)}")
+                logger.error("Failed to emit session cancellation: {}".format(str(e)))
 
             return jsonify({
                 'status': 'success',
