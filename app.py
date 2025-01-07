@@ -311,7 +311,7 @@ def handle_raw_sms():
     """Handle raw SMS data."""
     try:
         data = request.json
-        if not data or "sms" not in data:
+        if not data or "message" not in data:
             return jsonify({'status': 'error', 'message': 'No SMS data provided'}), 400
 
         # Log raw SMS
