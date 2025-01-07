@@ -1,6 +1,6 @@
 # app.py
 """Main Flask application for the SMS gateway."""
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request, current_app
 from flask_socketio import SocketIO, emit
 from threading import Lock, Thread
 from modem_handler import ModemHandler
@@ -25,8 +25,7 @@ app = Flask(__name__)
 app.config.from_object(Config)
 socketio = SocketIO(app, cors_allowed_origins="*")
 
-SUPABASE_API_URL = "https://jfdpajjqwfpapdakiohz.supabase.co/rest/v1/mobile_money_sms"
-SUPABASE_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpmZHBhampxd2ZwYXBkYWtpb2h6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzYyNjUxNjQsImV4cCI6MjA1MTg0MTE2NH0.R3LhaKyREcXrBwNj8XsX8AOdgme5b382OZSR1yUFHRk"
+
 
 
 # Global variables
@@ -317,34 +316,55 @@ def handle_raw_sms():
             return jsonify({'status': 'error', 'message': 'No SMS data provided'}), 400
 
         raw_sms = data['message']
+        sender = data.get('sender')
+        timestamp_str = data.get('timestamp')
+        
+        # Try to parse as mobile money SMS
         parsed_sms = parse_sms(raw_sms)
+        
+        # If parsing fails, create a basic SMS record
+        if not parsed_sms:
+            try:
+                timestamp = datetime.fromisoformat(timestamp_str) if timestamp_str else datetime.now()
+            except (ValueError, TypeError):
+                logger.warning("Invalid timestamp format: %s, using current time", timestamp_str)
+                timestamp = datetime.now()
 
-        # Cast the data types explicitly to match Postgres types
-        sms_data = {
-            "amount": float(parsed_sms.get("amount")) if parsed_sms and parsed_sms.get("amount") is not None else None,
-            "receiver": str(parsed_sms.get("receiver")) if parsed_sms and parsed_sms.get("receiver") is not None else None,
-            "sender": str(parsed_sms.get("sender")) if parsed_sms and parsed_sms.get("sender") is not None else None,
-            "date_time": parsed_sms.get("date_time").isoformat() if parsed_sms and parsed_sms.get("date_time") is not None else None,
-            "balance": float(parsed_sms.get("balance")) if parsed_sms and parsed_sms.get("balance") is not None else None,
-            "reference": str(parsed_sms.get("reference")) if parsed_sms and parsed_sms.get("reference") is not None else None,
-            "raw_message": str(raw_sms)
-        }
+            sms_data = {
+                "sender": sender,
+                "raw_message": raw_sms,
+                "date_time": timestamp.isoformat(),
+                "parsed": False
+            }
+        else:
+            # Use parsed mobile money SMS data
+            sms_data = {
+                "amount": parsed_sms["amount"],
+                "receiver": parsed_sms["receiver"],
+                "sender": parsed_sms["sender"],
+                "date_time": parsed_sms["date_time"].isoformat(),
+                "balance": parsed_sms["balance"],
+                "reference": parsed_sms["reference"],
+                "raw_message": raw_sms,
+                "parsed": True
+            }
 
-        # Log the exact data being sent to Supabase
         logger.info("Sending to Supabase: %s", sms_data)
 
-        # Make sure the API URL ends with the correct table name
-        if not SUPABASE_API_URL.endswith('/mobile_money_sms'):
-            SUPABASE_API_URL = "{}/mobile_money_sms".format(SUPABASE_API_URL)
+        supabase_url = app.config['SUPABASE_API_URL']
+        supabase_key = app.config['SUPABASE_API_KEY']
+
+        if not supabase_url.endswith('/mobile_money_sms'):
+            supabase_url = "{}/mobile_money_sms".format(supabase_url)
 
         response = requests.post(
-            SUPABASE_API_URL,
+            supabase_url,
             json=sms_data,
             headers={
-                "apikey": SUPABASE_API_KEY,
-                "Authorization": "Bearer {}".format(SUPABASE_API_KEY),
+                "apikey": supabase_key,
+                "Authorization": "Bearer {}".format(supabase_key),
                 "Content-Type": "application/json",
-                "Prefer": "return=minimal"  # Add this to minimize response payload
+                "Prefer": "return=minimal"
             }
         )
         
