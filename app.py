@@ -197,10 +197,10 @@ def send_ussd():
                 'message': 'USSD code is required.'
             }), 400
 
-        logger.info(f"Received USSD request - Code: {ussd_code}, Session: {session_id}")
+        logger.info("Received USSD request - Code: {}, Session: {}".format(ussd_code, session_id))
         
         response = modem_handler.send_ussd(ussd_code, session_id)
-        logger.info(f"USSD response: {response}")
+        logger.info("USSD response: {}".format(response))
 
         # Emit response via WebSocket
         try:
