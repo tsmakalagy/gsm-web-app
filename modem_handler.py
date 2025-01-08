@@ -182,6 +182,8 @@ class ModemHandler:
     #     except Exception as e:
     #         logger.error("Error handling SMS: %s", str(e))
     #         return None
+    def handle_sms(self, sms):
+        return None
 
     def send_ussd(self, ussd_string):
         """Send a USSD command and get the response."""
