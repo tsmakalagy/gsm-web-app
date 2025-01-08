@@ -5,8 +5,6 @@ from gsmmodem.modem import GsmModem
 from gsmmodem.exceptions import TimeoutException
 from datetime import datetime
 import logging
-import json
-import requests
 import time
 
 logger = logging.getLogger(__name__)
@@ -160,36 +158,36 @@ class ModemHandler:
         #     logger.error("Failed to send SMS: %s", str(e))
         #     raise
 
-    def handle_sms(self, sms):
-        """Callback for handling incoming SMS messages."""
-        try:
-            logger.info("=== SMS message received ===")
-            logger.info("From: %s", sms.number)
-            logger.info("Time: %s", sms.time)
-            logger.info("Message: %s", sms.text)
+    # def handle_sms(self, sms):
+    #     """Callback for handling incoming SMS messages."""
+    #     try:
+    #         logger.info("=== SMS message received ===")
+    #         logger.info("From: %s", sms.number)
+    #         logger.info("Time: %s", sms.time)
+    #         logger.info("Message: %s", sms.text)
             
-            # Prepare data
-            data = {
-                "number": sms.number,
-                "time": sms.time.isoformat() if hasattr(sms.time, 'isoformat') else str(sms.time),
-                "text": sms.text
-            }
+    #         # Prepare data
+    #         data = {
+    #             "number": sms.number,
+    #             "time": sms.time.isoformat() if hasattr(sms.time, 'isoformat') else str(sms.time),
+    #             "text": sms.text
+    #         }
             
-            # Send to app.py REST endpoint
-            try:
-                response = requests.post('http://localhost:5000/forward_sms', json=data)
-                if response.status_code == 200:
-                    logger.info("SMS data forwarded successfully")
-                else:
-                    logger.error("Failed to forward SMS: %s", response.text)
-            except Exception as e:
-                logger.error("Error forwarding SMS: %s", str(e))
+    #         # Send to app.py REST endpoint
+    #         try:
+    #             response = requests.post('http://localhost:5000/forward_sms', json=data)
+    #             if response.status_code == 200:
+    #                 logger.info("SMS data forwarded successfully")
+    #             else:
+    #                 logger.error("Failed to forward SMS: %s", response.text)
+    #         except Exception as e:
+    #             logger.error("Error forwarding SMS: %s", str(e))
             
-            return data
+    #         return data
 
-        except Exception as e:
-            logger.error("Error handling SMS: %s", str(e))
-            return None
+    #     except Exception as e:
+    #         logger.error("Error handling SMS: %s", str(e))
+    #         return None
 
     def send_ussd(self, ussd_string):
         """Send a USSD command and get the response."""
