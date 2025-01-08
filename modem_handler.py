@@ -10,16 +10,10 @@ import time
 logger = logging.getLogger(__name__)
 
 class ModemHandler:
-    # def __init__(self, config, socketio=None):
-    #     """Initialize the modem handler with configuration."""
-    #     self.config = config
-    #     self.modem = None
-    #     self.socketio = socketio
-    def __init__(self, config, socketio, sms_callback=None):
+    def __init__(self, config, sms_callback=None):
         """Initialize the modem handler with configuration."""
         self.config = config
         self.modem = None
-        self.socketio = socketio
         self.external_sms_callback = sms_callback
         logger.info("ModemHandler initialized with config: PORT=%s, BAUDRATE=%s", 
                    config.MODEM_PORT, config.MODEM_BAUDRATE)
