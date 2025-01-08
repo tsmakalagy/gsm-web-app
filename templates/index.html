@@ -564,26 +564,34 @@
 
         });
 
-        function startUssdSession(initialCode = '#111#') {
+        function startUssdSession(initialCode = '*111#') {
             $.ajax({
                 url: '/api/ussd/start',
                 type: 'POST',
                 contentType: 'application/json',
                 data: JSON.stringify({ code: initialCode }),
                 success: function(response) {
+                    console.log('Server response:', response); // Add this log
                     if (response.status === 'success') {
-                        showUssdDialog(response.response, response.session_id);
+                        // Add null check and default value
+                        const message = response.response || 'No response received';
+                        showUssdDialog(message, response.session_id);
                     } else {
                         showAlert('danger', response.message || 'Failed to start USSD session');
                     }
                 },
                 error: function(xhr) {
+                    console.error('USSD error:', xhr); // Add error logging
                     showAlert('danger', 'Failed to start USSD session');
                 }
             });
         }
 
         function showUssdDialog(message, sessionId) {
+            if (!message) {
+                console.error('No message provided to showUssdDialog');
+                message = 'No response received';
+            }
             // Remove any existing USSD dialog
             $('#ussdDialog').remove();
             
@@ -597,7 +605,7 @@
                             </div>
                             <div class="modal-body">
                                 <div class="ussd-response mb-3 p-3 bg-light">
-                                    ${message.replace(/\n/g, '<br>')}
+                                    ${(message || '').replace(/\n/g, '<br>')}
                                 </div>
                                 <input type="text" class="form-control" id="ussdInput" 
                                     placeholder="Enter your response">

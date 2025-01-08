@@ -454,6 +454,7 @@ def start_ussd_session():
         return jsonify({
             'status': 'success',
             'session_id': session_id,
+            'response': 'Waiting for USSD response...',
             'message': 'USSD request sent'
         })
     except Exception as e:
