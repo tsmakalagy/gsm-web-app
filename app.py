@@ -13,6 +13,19 @@ import time
 import re
 import requests
 from datetime import datetime
+from dotenv import load_dotenv
+import os
+import psycopg2
+
+load_dotenv()
+
+DB_CONFIG = {
+    "dbname": os.getenv("SUPABASE_DB_NAME"),
+    "user": os.getenv("SUPABASE_DB_USER"),
+    "password": os.getenv("SUPABASE_DB_PASSWORD"),
+    "host": os.getenv("SUPABASE_DB_HOST"),
+    "port": os.getenv("SUPABASE_DB_PORT", "5432")  # Default to 5432 if not provided
+}
 
 # Setup logging
 logging.basicConfig(
@@ -117,6 +130,22 @@ auth_manager = AuthManager(modem_handler, Config.SECRET_KEY)
 def index():
     """Serve the frontend interface."""
     return render_template('index.html')
+
+
+def get_db_connection():
+    return psycopg2.connect(**DB_CONFIG)
+
+@app.route('/test-db', methods=['GET'])
+def test_db():
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT 1;")
+        cur.close()
+        conn.close()
+        return jsonify({"status": "success", "message": "Database connection successful"}), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/send_sms', methods=['POST'])
 def send_sms():
