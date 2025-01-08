@@ -55,7 +55,7 @@
                 </form>
                 <div id="ussdStatus" class="mt-3"></div>
                 <div class="mt-3">
-                    <button type="button" class="btn btn-success" onclick="startUssdSession('*111#')">
+                    <button type="button" class="btn btn-success" onclick="startUssdSession('#111#')">
                         Start Money Transfer
                     </button>
                 </div>
@@ -564,7 +564,7 @@
 
         });
 
-        function startUssdSession(initialCode = '*111#') {
+        function startUssdSession(initialCode = '#111#') {
             $.ajax({
                 url: '/api/ussd/start',
                 type: 'POST',
