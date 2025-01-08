@@ -1,5 +1,6 @@
 # app.py
 """Main Flask application for the SMS gateway."""
+import uuid
 from flask import Flask, jsonify, render_template, request, current_app
 from flask_socketio import SocketIO, emit
 from threading import Lock, Thread
@@ -427,6 +428,74 @@ def handle_raw_sms():
     except Exception as e:
         logger.error("Error handling SMS: %s", str(e), exc_info=True)
         return jsonify({'status': 'error', 'message': str(e)}), 500
+    
+ussd_sessions = {}  # Store active USSD sessions
+
+@app.route('/api/ussd/start', methods=['POST'])
+def start_ussd_session():
+    """Start a new USSD session"""
+    try:
+        session_id = str(uuid.uuid4())
+        data = request.json
+        initial_code = data.get('code', '#111#')
+        
+        ussd_sessions[session_id] = {
+            'status': 'active',
+            'step': 0,
+            'history': []
+        }
+        
+        socketio.emit('ussd_request', {
+            'type': 'ussd_request',
+            'code': initial_code,
+            'session_id': session_id
+        })
+        
+        return jsonify({
+            'status': 'success',
+            'session_id': session_id,
+            'message': 'USSD request sent'
+        })
+    except Exception as e:
+        logger.error("Error starting USSD session: %s", str(e))
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/ussd/continue', methods=['POST'])
+def continue_ussd_session():
+    """Continue an existing USSD session"""
+    try:
+        data = request.json
+        session_id = data.get('session_id')
+        user_input = data.get('input')
+        
+        if not session_id or session_id not in ussd_sessions:
+            return jsonify({'status': 'error', 'message': 'Invalid session'}), 400
+            
+        socketio.emit('ussd_request', {
+            'type': 'ussd_request',
+            'code': user_input,
+            'session_id': session_id
+        })
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'USSD request sent'
+        })
+    except Exception as e:
+        logger.error("Error in USSD session: %s", str(e))
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+    
+@socketio.on('ussd_response')
+def handle_ussd_response(data):
+    """Handle USSD response from Flutter app"""
+    session_id = data.get('session_id')
+    if session_id in ussd_sessions:
+        # Forward response to frontend
+        emit('ussd_response', {
+            'session_id': session_id,
+            'response': data.get('response'),
+            'requires_input': data.get('requires_input', True)
+        }, broadcast=True)
 
 @app.route('/protected-resource')
 @require_auth(auth_manager)
