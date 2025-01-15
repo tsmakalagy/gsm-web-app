@@ -76,6 +76,7 @@ def check_balance():
             'status': 'success',
             'ussd_code': ussd_code,
             'response': response.get('response'),
+            'timestamp': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
         })
 
     except Exception as e:
