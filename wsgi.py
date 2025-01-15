@@ -1,4 +1,5 @@
-from app import app, socketio
+# wsgi.py
+from app import app
 
 if __name__ == "__main__":
-    socketio.run(app)
+    app.run()

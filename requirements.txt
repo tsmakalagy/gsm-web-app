@@ -1,19 +1,18 @@
-Flask==1.1.4
-Flask-SocketIO==4.2.1
-python-dotenv==0.13.0
-PyJWT==1.7.1
-gunicorn==19.10.0
-eventlet==0.30.2
-requests==2.22.0
-Werkzeug==0.16.1
-Jinja2==2.11.3
-itsdangerous==1.1.0
-click==7.1.2
-markupsafe==1.1.1
-greenlet==0.4.17
-python-engineio==3.9.0
-python-socketio==4.6.0
-# Install gsmmodem manually:
-# git clone https://github.com/faucamp/python-gsmmodem.git
-# cd python-gsmmodem
-# pip install .
+# Core dependencies
+Flask==2.0.1
+Werkzeug==2.0.1
+gunicorn==20.1.0
+requests==2.26.0
+
+# GSM Modem dependencies
+pyserial>=3.5
+gsmmodem-new>=0.13
+
+# Utilities
+python-dotenv==0.19.0
+logging>=0.5.1.2
+
+# Development dependencies
+pytest>=6.2.5
+black>=21.7b0
+flake8>=3.9.0
