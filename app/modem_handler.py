@@ -1,4 +1,3 @@
-# modem_handler.py
 from gsmmodem.modem import GsmModem
 from gsmmodem.exceptions import TimeoutException
 import logging
@@ -21,7 +20,7 @@ class ModemHandler:
             self.modem.connect(self.config.MODEM_PIN)
             return True
         except Exception as e:
-            logger.error(f"Failed to connect to modem: {e}")
+            logger.error("Failed to connect to modem: {}".format(e))
             return False
 
     def check_network_status(self):
@@ -36,10 +35,10 @@ class ModemHandler:
             if not network_name:
                 return False, "Not registered to network"
                 
-            return True, f"Connected to {network_name} (Signal: {signal_strength})"
+            return True, "Connected to {} (Signal: {})".format(network_name, signal_strength)
             
         except Exception as e:
-            logger.error(f"Error checking network status: {e}")
+            logger.error("Error checking network status: {}".format(e))
             return False, str(e)
 
     def wait_for_network(self, timeout=30):
@@ -47,7 +46,7 @@ class ModemHandler:
         try:
             return self.modem.waitForNetworkCoverage(timeout)
         except Exception as e:
-            logger.error(f"Error waiting for network: {e}")
+            logger.error("Error waiting for network: {}".format(e))
             return False
 
     def send_sms(self, number, message):
@@ -59,13 +58,13 @@ class ModemHandler:
             # Verify network status
             network_ok, status_msg = self.check_network_status()
             if not network_ok:
-                raise RuntimeError(f"Network not available: {status_msg}")
+                raise RuntimeError("Network not available: {}".format(status_msg))
 
             # Send with retries
             for attempt in range(3):
                 try:
                     self.modem.sendSms(number, message)
-                    logger.info(f"SMS sent to {number}")
+                    logger.info("SMS sent to {}".format(number))
                     return
                 except Exception as e:
                     if attempt == 2:  # Last attempt
@@ -73,7 +72,7 @@ class ModemHandler:
                     time.sleep(2)  # Wait before retry
                     
         except Exception as e:
-            logger.error(f"Failed to send SMS: {e}")
+            logger.error("Failed to send SMS: {}".format(e))
             raise
 
     def send_ussd(self, ussd_string):
@@ -81,10 +80,10 @@ class ModemHandler:
         if not self.modem:
             raise RuntimeError("Modem not connected")
 
-        logger.info(f"Sending USSD command: {ussd_string}")
+        logger.info("Sending USSD command: {}".format(ussd_string))
         try:
             response = self.modem.sendUssd(ussd_string)
-            logger.info(f"USSD response received: {response.message}")
+            logger.info("USSD response received: {}".format(response.message))
             
             if response.sessionActive:
                 logger.info("USSD session active, canceling session")
@@ -95,13 +94,13 @@ class ModemHandler:
                 "response": response.message
             }
         except TimeoutException:
-            logger.error(f"USSD request timed out: {ussd_string}")
+            logger.error("USSD request timed out: {}".format(ussd_string))
             return {
                 "status": "error", 
                 "response": "Request timed out"
             }
         except Exception as e:
-            logger.error(f"USSD error: {e}")
+            logger.error("USSD error: {}".format(e))
             return {
                 "status": "error", 
                 "response": str(e)
