@@ -18,7 +18,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first to leverage Docker cache
-COPY requirements.txt .
+COPY requirements.txt /app/
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
@@ -31,7 +31,7 @@ RUN git clone https://github.com/faucamp/python-gsmmodem.git && \
     rm -rf python-gsmmodem
 
 # Copy the application files
-COPY . .
+COPY . /app/
 
 # Create directory for logs
 RUN mkdir -p /app/logs && \
