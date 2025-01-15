@@ -7,7 +7,7 @@ greenlet==0.4.17
 
 # Utilities
 python-dotenv==0.13.0
-logging>=0.5.1.2
+logging>=0.4.9.6
 
 # Development dependencies
 pytest>=6.2.5
