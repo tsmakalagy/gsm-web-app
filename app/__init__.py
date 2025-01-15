@@ -20,7 +20,7 @@ modem_handler = None
 def init_modem():
     """Initialize the GSM modem."""
     try:
-        handler = ModemHandler(config=app.config)
+        handler = ModemHandler(config=Config)
         if handler.connect() and handler.wait_for_network():
             logger.info("Modem initialized successfully")
             return handler
