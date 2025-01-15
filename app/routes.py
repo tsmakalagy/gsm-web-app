@@ -2,7 +2,7 @@
 from flask import jsonify, request
 from app import app, modem_handler
 import logging
-from datetime import datetime
+import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +76,7 @@ def check_balance():
             'status': 'success',
             'ussd_code': ussd_code,
             'response': response.get('response'),
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.datetime.utcnow().isoformat()
         })
 
     except Exception as e:
